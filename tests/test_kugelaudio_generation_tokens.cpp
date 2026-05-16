@@ -41,6 +41,26 @@ int main() {
         return 4;
     }
 
+    if (vv::detail::kugelaudio_speech_end_penalty_for_test() != 1.5f) {
+        std::fprintf(stderr, "FAIL: unexpected canonical speech_end penalty %.3f\n",
+                     vv::detail::kugelaudio_speech_end_penalty_for_test());
+        return 8;
+    }
+    std::fill(logits.begin(), logits.end(), -1000.0f);
+    logits[vv::detail::kugelaudio_speech_end_id_for_test()] = 1.6f;
+    logits[vv::detail::kugelaudio_speech_diffusion_id_for_test()] = 1.0f;
+    if (vv::detail::select_kugelaudio_speech_token_from_logits_for_test(logits) !=
+        vv::detail::kugelaudio_speech_end_id_for_test()) {
+        std::fprintf(stderr, "FAIL: unpenalized constrained selection should prefer speech_end\n");
+        return 9;
+    }
+    vv::detail::apply_kugelaudio_speech_end_penalty_for_test(&logits);
+    if (vv::detail::select_kugelaudio_speech_token_from_logits_for_test(logits) !=
+        vv::detail::kugelaudio_speech_diffusion_id_for_test()) {
+        std::fprintf(stderr, "FAIL: canonical speech_end penalty should defer premature stop in favor of diffusion\n");
+        return 10;
+    }
+
     if (!vv::detail::kugelaudio_token_requires_cfg_reset_for_test(
             vv::detail::kugelaudio_speech_start_id_for_test())) {
         std::fprintf(stderr, "FAIL: speech_start should trigger canonical KugelAudio CFG reset\n");

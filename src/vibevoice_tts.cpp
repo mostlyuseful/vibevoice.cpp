@@ -1127,6 +1127,7 @@ constexpr int kSpeech15bStartId = 151652;   // <|vision_start|>
 constexpr int kSpeech15bEndId   = 151653;   // <|vision_end|>
 constexpr int kSpeech15bDiffId  = 151654;   // <|vision_pad|>
 constexpr int kSpeech15bEosId   = 151643;   // Qwen EOS used by canonical speech loop
+constexpr float kKugelAudioSpeechEndPenalty = 1.5f;
 constexpr int kSpeech15bImgPadId = 151655;  // <|image_pad|> — negative branch
 constexpr int kSpeech15bCompressRatio = 3200;
 
@@ -1143,6 +1144,13 @@ namespace detail {
 
 std::vector<int32_t> kugelaudio_valid_speech_token_ids() {
     return {kSpeech15bStartId, kSpeech15bEndId, kSpeech15bDiffId, kSpeech15bEosId};
+}
+
+void apply_kugelaudio_speech_end_penalty(std::vector<float>* logits) {
+    if (!logits) return;
+    if (static_cast<size_t>(kSpeech15bEndId) < logits->size()) {
+        (*logits)[static_cast<size_t>(kSpeech15bEndId)] -= kKugelAudioSpeechEndPenalty;
+    }
 }
 
 int select_kugelaudio_speech_token_from_logits(const std::vector<float>& logits) {
@@ -1169,6 +1177,14 @@ bool kugelaudio_token_stops_generation(int32_t token_id) {
 
 std::vector<int32_t> kugelaudio_valid_speech_token_ids_for_test() {
     return kugelaudio_valid_speech_token_ids();
+}
+
+float kugelaudio_speech_end_penalty_for_test() {
+    return kKugelAudioSpeechEndPenalty;
+}
+
+void apply_kugelaudio_speech_end_penalty_for_test(std::vector<float>* logits) {
+    apply_kugelaudio_speech_end_penalty(logits);
 }
 
 int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits) {
@@ -1682,6 +1698,7 @@ int tts_15b_generate(VibeVoiceModel*            model,
                 VV_LOG_ERROR("tts_15b: failed to read KugelAudio speech-path logits");
                 return -14;
             }
+            detail::apply_kugelaudio_speech_end_penalty(&logits);
             const int next_token = detail::select_kugelaudio_speech_token_from_logits(logits);
             if (p.verbose) {
                 std::fprintf(stderr,

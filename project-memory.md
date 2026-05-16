@@ -190,3 +190,11 @@
   - leave control-token iterations unbounded: simpler, but risks a hung generation loop on a bad model state
   - redesign the public API around a separate max-token budget in this slice: cleaner long-term, but broader than the current CFG-parity increment
 - Affected area: `prd.md` Slice 3 / "CFG behavior is aligned with the canonical implementation for the supported path.".
+
+### KugelAudio speech-end penalty default
+- Context: the canonical PyTorch generation loop subtracts `speech_end_penalty=1.5` from the constrained `speech_end` logit before selecting the next speech-path token, but the current C++ runtime had no corresponding knob or metadata source.
+- Chosen default: hardcode the canonical default penalty value `1.5f` for the supported KugelAudio v1 path and apply it before constrained token selection.
+- Rejected alternatives:
+  - leave the penalty at zero until a public setting is plumbed: simpler, but knowingly diverges from canonical stop behavior
+  - add a new public API/CLI parameter in this slice: potentially useful later, but broader than the current parity-only increment
+- Affected area: `prd.md` Slice 3 / "Speech-end behavior is aligned with canonical handling and terminates correctly.".
