@@ -311,7 +311,7 @@ Testing:
 Keep `spec.md`, maintainer guidance, and any eval/conversion notes aligned with observed reality.
 
 AC:
-- [ ] Developer-facing docs reflect current v1 scope and acceptance criteria.
+- [x] Developer-facing docs reflect current v1 scope and acceptance criteria.
 - [ ] Canonical reference points into `../kugelaudio-open` are documented.
 - [ ] Known divergences or temporary compatibility shims are recorded succinctly.
 

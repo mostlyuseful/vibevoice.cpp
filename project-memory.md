@@ -426,3 +426,11 @@
   - remove the legacy semantics from the shared TTS params comment entirely: would hide real legacy behavior still present for regression/migration use
   - leave the header comment ambiguous and rely on external docs: too easy for future work to interpret as “almost-supported” V2 behavior in the critical path
 - Affected area: `prd.md` Slice 5 / "No V2 feature is half-implemented in the critical path.".
+
+### KugelAudio developer-doc scope anchor
+- Context: the next Slice 5 item requires developer-facing docs to reflect the current v1 scope and acceptance criteria, but the README still led primarily into legacy VibeVoice quickstarts and `docs/conversion.md` still opened as a VibeVoice-only conversion guide.
+- Chosen default: anchor the developer-facing surface around one explicit `KugelAudio v1 acceptance path` section in the README and align the conversion doc intro to that same scope/criteria. Keep the legacy material below, but put the supported path first.
+- Rejected alternatives:
+  - rewrite the entire README around KugelAudio only: too destructive while legacy VibeVoice migration examples are still intentionally retained
+  - rely only on AGENTS.md / maintainer docs: too hidden for developers arriving through the README/docs first
+- Affected area: `prd.md` Slice 5 / "Developer-facing docs reflect current v1 scope and acceptance criteria.".

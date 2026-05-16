@@ -18,6 +18,52 @@ cloning) and **ASR** (long-form transcription with diarization).
 > coverage, but **they are not the KugelAudio v1 acceptance path** unless a
 > section below explicitly says otherwise.
 
+## KugelAudio v1 acceptance path
+
+If you are here for the **currently supported** path in this fork, use this
+workflow rather than the legacy VibeVoice quickstarts below.
+
+### Supported v1 scope
+- checkpoint: `kugelaudio/kugelaudio-0-open`
+- interface: CLI-only
+- TTS shape: single-speaker only
+- conditioning: exactly one raw reference WAV
+- parity target: canonical-vs-ggml comparison against `../kugelaudio-open`
+- quality target: `f16` closed-loop ASR recall >= 95% of canonical recall,
+  with absolute floor 0.80
+- execution target: `q8_0` must run end-to-end on the same acceptance path
+
+### Acceptance workflow
+```bash
+# 1) build
+cmake -B build -DVIBEVOICE_BUILD_TESTS=ON && cmake --build build -j
+
+# 2) convert tokenizer + KugelAudio checkpoint
+python scripts/convert_tokenizer.py --src models/qwen2.5/tokenizer.json --out models/tokenizer.gguf
+python scripts/convert_vibevoice_to_gguf.py \
+  --src models/kugelaudio-0-open \
+  --out models/kugelaudio-f16.gguf
+
+# 3) (optional) quantize execution artifact
+python scripts/quantize_gguf.py \
+  --src models/kugelaudio-f16.gguf \
+  --out models/kugelaudio-q8_0.gguf \
+  --type q8_0
+
+# 4) run the canonical-vs-ggml evaluation harness
+uv run scripts/eval_kugelaudio_divergence.py \
+  --config tests/fixtures/kugelaudio_eval_config.json \
+  --execute both
+```
+
+Primary docs for this path:
+- `docs/conversion.md` — converter + GGUF contract
+- `docs/kugelaudio-parity.md` — parity notes, acceptance fixture, eval/logging contract
+- `AGENTS.md` — maintainer workflow / acceptance path orientation
+
+Everything below this heading is retained mostly for legacy VibeVoice migration
+or regression coverage unless explicitly marked otherwise.
+
 ## Quickstart - prebuilt models (legacy VibeVoice examples, not KugelAudio v1 acceptance)
 
 We publish quantized GGUFs at [`mudler/vibevoice.cpp-models`](https://huggingface.co/mudler/vibevoice.cpp-models).

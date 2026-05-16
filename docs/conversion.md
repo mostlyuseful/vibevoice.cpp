@@ -1,7 +1,25 @@
-# Converting VibeVoice models to GGUF
+# Converting VibeVoice / KugelAudio models to GGUF
 
-`vibevoice.cpp` ships three Python tools that turn upstream Microsoft VibeVoice
-artifacts into the GGUF format the C++ runtime consumes.
+`vibevoice.cpp` ships Python conversion tools for both legacy VibeVoice
+artifacts and the current **KugelAudio v1 acceptance path**.
+
+For the supported KugelAudio v1 workflow, the important pieces are:
+- `scripts/convert_tokenizer.py`
+- `scripts/convert_vibevoice_to_gguf.py`
+- `scripts/quantize_gguf.py` (optional `q8_0` execution artifact)
+- `scripts/eval_kugelaudio_divergence.py` (acceptance/eval harness)
+
+Current supported KugelAudio v1 scope:
+- checkpoint: `kugelaudio/kugelaudio-0-open`
+- TTS shape: single-speaker only
+- conditioning: exactly one raw reference WAV
+- interface: CLI-only acceptance path
+- quality target: `f16` recall >= 95% of canonical with 0.80 floor
+- execution target: `q8_0` runs end-to-end on the same path
+
+Legacy VibeVoice-only flows (for example `convert_voice_to_gguf.py`) remain
+in this doc for migration/reference purposes, but they are not part of the
+KugelAudio v1 acceptance path.
 
 ## Pipeline overview
 
