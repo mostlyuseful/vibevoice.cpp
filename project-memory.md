@@ -246,3 +246,11 @@
   - try to exhaustively test every malformed CLI combination in this increment: broader than the current PRD item and duplicates generic argument-parsing coverage
   - rely only on runtime/CAPI gating tests: weaker because the item is specifically about the CLI surface rejecting unsupported flags/features clearly
 - Affected area: `prd.md` Slice 3 / "Unsupported flags/features are rejected clearly.".
+
+### KugelAudio CLI waveform-validity validation point
+- Context: the next CLI-demo item requires proving the generated output is a valid waveform file, and merely reloading it through `load_wav_24k_mono(...)` is useful but indirect.
+- Chosen default: strengthen the real-model gated CLI end-to-end smoke test to validate the emitted file at the container boundary too: RIFF/WAVE signature, `fmt ` chunk presence, PCM16 encoding, mono channel count, and 24 kHz sample rate.
+- Rejected alternatives:
+  - add a separate standalone WAV-writer unit test only: helpful, but weaker for the CLI-specific acceptance item
+  - trust successful reload alone as sufficient proof: simpler, but less explicit about the on-disk waveform contract
+- Affected area: `prd.md` Slice 3 / "Generated output is written as a valid waveform file.".
