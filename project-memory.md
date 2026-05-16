@@ -143,6 +143,14 @@
   - test only the runtime call path: misses the PRD requirement that the currently supported public surfaces reject the same unsupported conditioning modes explicitly
 - Affected area: `prd.md` Slice 2 / conditioning-mode validation and rejection behavior.
 
+### CLI conditioning wiring verification hook
+- Context: the next PRD item requires proving the accepted single-reference path is wired end-to-end through CLI -> preprocessing -> conditioning, but the lightweight synthetic KugelAudio fixture is not numerically valid for full generation.
+- Chosen default: add a test-only environment hook that returns success immediately after KugelAudio conditioning features are prepared, so the CLI integration test can verify the accepted path reaches preprocessing + conditioning without needing a real model checkpoint.
+- Rejected alternatives:
+  - require a real 7B checkpoint for this slice: stronger, but too heavy for routine local validation of a wiring-only increment
+  - test only the runtime helper and not the CLI binary: weaker than the PRD item, which explicitly mentions CLI wiring
+- Affected area: `prd.md` Slice 2 / "Single reference path is fully wired through CLI -> preprocessing -> conditioning.".
+
 ### Reference-audio resampling validation point
 - Context: the next raw-reference item requires proving that reference audio is resampled internally to 24 kHz mono, and the runtime already funnels that through `load_wav_24k_mono`.
 - Chosen default: validate the behavior at `load_wav_24k_mono` directly in `test_audio_io.cpp`, since that is the shared convergence point used by the KugelAudio reference-audio path.

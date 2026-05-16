@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <limits>
@@ -1331,6 +1332,11 @@ int kugelaudio_image_pad_id_for_test() { return kSpeech15bImgPadId; }
 }  // namespace detail
 
 namespace {
+bool should_short_circuit_after_conditioning_for_test() {
+    const char* v = std::getenv("VIBEVOICE_KUGELAUDIO_TEST_STOP_AFTER_CONDITIONING");
+    return v && v[0] && std::strcmp(v, "0") != 0;
+}
+
 int tts_15b_generate(VibeVoiceModel*            model,
                      const std::string&         text,
                      const VibeVoiceTTSParams&  p,
@@ -1403,6 +1409,12 @@ int tts_15b_generate(VibeVoiceModel*            model,
             return -5;
         }
         const int Tc = Tc_a;
+
+        if (is_kugelaudio && should_short_circuit_after_conditioning_for_test()) {
+            VV_LOG_INFO("tts_15b: test hook stopping after preprocessing+conditioning encoders (single_ref_frames=%d)", Tc);
+            samples->assign(240, 0.0f);
+            return 0;
+        }
 
         // Connectors -> per-frame [hidden] speech features.
         auto ac_emb = detail::run_connector(w.ac_fc1_w, w.ac_fc1_b, w.ac_norm,
