@@ -70,7 +70,7 @@ Add explicit gating for v1-only support: single checkpoint, single-speaker, raw-
 AC:
 - [x] Unsupported features are rejected before inference starts.
 - [x] Error text distinguishes unsupported model/schema from unsupported runtime feature usage.
-- [ ] Logs state what was detected and what is enabled.
+- [x] Logs state what was detected and what is enabled.
 
 Testing:
 - Unit: unsupported-feature gating cases.

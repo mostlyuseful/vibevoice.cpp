@@ -78,3 +78,11 @@
   - gate all `1.5b` models identically: simpler, but would regress legacy VibeVoice 1.5B capabilities and tests
   - postpone all gating to CLI only: too late for the PRD item, which requires rejection before inference starts in the runtime path
 - Affected area: `prd.md` Slice 1 / "Unsupported features are rejected before inference starts.".
+
+### KugelAudio loader detection log payload
+- Context: the remaining loader item requires logs to say what was detected and what is enabled, but the repo already had a generic post-load shape log and no settled format for KugelAudio-specific state.
+- Chosen default: emit one structured `VV_LOG_INFO` line after successful KugelAudio load that names the detected checkpoint, normalized runtime path, schema version, and the main v1 feature gates (`raw_ref_single_speaker`, `semantic_conditioning`, `pre_baked_voice`, `multi_speaker_dialog`).
+- Rejected alternatives:
+  - spread the same information across several logs: harder to assert in tests and noisier for operators
+  - log every minor config field again: redundant with the existing shape/scaling summary
+- Affected area: `prd.md` Slice 1 / "Logs state what was detected and what is enabled.".

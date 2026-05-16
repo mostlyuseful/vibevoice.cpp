@@ -53,6 +53,13 @@ int main() {
         std::fprintf(stderr, "FAIL: variant=%s want 1.5b normalized runtime path\n", model.variant.c_str());
         return 2;
     }
+    if (g_last_log.find("detected kugelaudio checkpoint=kugelaudio-0-open") == std::string::npos ||
+        g_last_log.find("runtime_variant=1.5b") == std::string::npos ||
+        g_last_log.find("raw_ref_single_speaker:on") == std::string::npos ||
+        g_last_log.find("semantic_conditioning:on") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: success log did not report detected KugelAudio state: %s\n", g_last_log.c_str());
+        return 13;
+    }
     if (model.cfg.hidden != 3584 || model.cfg.n_layers_lm != 8 || model.cfg.n_layers_tlm != 20 ||
         model.cfg.n_heads != 28 || model.cfg.n_kv_heads != 4 || model.cfg.head_dim != 128 ||
         model.cfg.latent != 64 || model.cfg.sample_rate != 24000) {

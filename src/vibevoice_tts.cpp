@@ -410,6 +410,12 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
                 c.hidden, c.n_layers_lm, c.n_layers_tlm, c.vocab_size,
                 static_cast<double>(c.speech_scaling),
                 static_cast<double>(c.speech_bias));
+    if (is_kugelaudio) {
+        VV_LOG_INFO("vibevoice_load: detected kugelaudio checkpoint=%s schema=%d runtime_variant=%s enabled={raw_ref_single_speaker:on semantic_conditioning:on pre_baked_voice:off multi_speaker_dialog:off}",
+                    m.get_str("kugelaudio.checkpoint", "<missing>").c_str(),
+                    m.get_i32("kugelaudio.schema_version", 0),
+                    out->variant.c_str());
+    }
     return true;
 }
 
