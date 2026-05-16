@@ -294,3 +294,11 @@
   - keep duplicating values independently inside each command only: workable, but weaker as an auditable shared contract
   - require all artifact hashes unconditionally: stronger, but incompatible with the dry-run/allow-missing-artifacts plan mode
 - Affected area: `prd.md` Slice 4 / "Inputs/settings are pinned and shared between canonical and ggml runs.".
+
+### KugelAudio eval results schema shape
+- Context: the next Slice 4 item requires results to be logged in a form suitable for regression checks, but full real execution may not be available during routine script validation.
+- Chosen default: define one normalized `results.json` schema now and support writing a stub/template copy of it in plan mode; real execution fills the same schema with return codes, statuses, and output hashes.
+- Rejected alternatives:
+  - wait for full end-to-end execution before defining the result shape: delays the regression contract too long
+  - log only raw stdout/stderr files: useful for debugging, but too unstructured for regression comparisons
+- Affected area: `prd.md` Slice 4 / "Results are logged in a form suitable for regression checks.".

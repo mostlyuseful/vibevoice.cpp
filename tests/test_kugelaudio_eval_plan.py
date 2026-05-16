@@ -11,6 +11,7 @@ def main() -> int:
     repo = Path(__file__).resolve().parent.parent
     cfg = repo / "tests" / "fixtures" / "kugelaudio_eval_config.json"
     script = repo / "scripts" / "eval_kugelaudio_divergence.py"
+    result_template = repo / "tests" / "fixtures" / "tmp_eval_results_template.json"
     proc = subprocess.run(
         [
             "uv",
@@ -19,6 +20,8 @@ def main() -> int:
             "--config",
             str(cfg),
             "--allow-missing-artifacts",
+            "--write-result-template",
+            str(result_template),
         ],
         cwd=repo,
         capture_output=True,
@@ -62,6 +65,21 @@ def main() -> int:
         raise SystemExit("FAIL: canonical command missing explicit torch.manual_seed")
     if shared["text"] not in canonical_inline or shared["reference_audio"]["path"] not in canonical_inline:
         raise SystemExit("FAIL: canonical command did not embed shared text/reference path")
+
+    if not result_template.exists():
+        raise SystemExit("FAIL: result template was not written")
+    results = json.loads(result_template.read_text(encoding="utf-8"))
+    result_template.unlink()
+    if results["schema_version"] != 1:
+        raise SystemExit("FAIL: results schema_version mismatch")
+    if results["shared_run"] != shared:
+        raise SystemExit("FAIL: results shared_run did not match plan shared_run")
+    if results["canonical"]["status"] != "planned" or results["ggml"]["status"] != "planned":
+        raise SystemExit("FAIL: planned results template should mark both runs as planned")
+    if results["canonical"]["return_code"] is not None or results["ggml"]["return_code"] is not None:
+        raise SystemExit("FAIL: planned results template should not have return codes yet")
+    if results["canonical"]["output_sha256"] is not None or results["ggml"]["output_sha256"] is not None:
+        raise SystemExit("FAIL: planned results template should not have output hashes yet")
 
     print("KugelAudio eval plan OK")
     return 0

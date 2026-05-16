@@ -38,6 +38,10 @@ def parse_args() -> argparse.Namespace:
         "--write-plan",
         help="Optional path to write normalized plan JSON. Defaults to stdout only unless executing.",
     )
+    p.add_argument(
+        "--write-result-template",
+        help="Optional path to write a normalized results-template JSON even in plan mode.",
+    )
     return p.parse_args()
 
 
@@ -188,6 +192,35 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
     return plan
 
 
+def build_results(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "shared_run": plan["shared_run"],
+        "canonical": {
+            "command": plan["canonical"]["command"],
+            "log_path": plan["canonical"]["log_path"],
+            "output_wav": plan["canonical"]["output_wav"],
+            "status": "planned",
+            "return_code": None,
+            "output_sha256": None,
+        },
+        "ggml": {
+            "command": plan["ggml"]["command"],
+            "log_path": plan["ggml"]["log_path"],
+            "output_wav": plan["ggml"]["output_wav"],
+            "status": "planned",
+            "return_code": None,
+            "output_sha256": None,
+        },
+    }
+
+
+def write_json(path_value: str | Path, data: dict[str, Any]) -> None:
+    path = Path(path_value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def run_one(command: list[str], cwd: str, log_path: str, extra_env: dict[str, str] | None = None) -> int:
     env = os.environ.copy()
     if extra_env:
@@ -210,11 +243,12 @@ def main() -> int:
 
     plan = build_plan(cfg)
     serialized = json.dumps(plan, indent=2, sort_keys=True)
+    results = build_results(plan)
 
     if args.write_plan:
-        plan_path = Path(args.write_plan)
-        plan_path.parent.mkdir(parents=True, exist_ok=True)
-        plan_path.write_text(serialized + "\n", encoding="utf-8")
+        write_json(args.write_plan, plan)
+    if args.write_result_template:
+        write_json(args.write_result_template, results)
 
     if args.execute == "none":
         sys.stdout.write(serialized + "\n")
@@ -222,17 +256,26 @@ def main() -> int:
 
     out_dir = Path(cfg["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "plan.json").write_text(serialized + "\n", encoding="utf-8")
+    write_json(out_dir / "plan.json", plan)
+    results_path = out_dir / "results.json"
 
     failures: list[str] = []
     if args.execute in {"canonical", "both"}:
         rc = run_one(plan["canonical"]["command"], plan["canonical"]["repo"], plan["canonical"]["log_path"])
+        results["canonical"]["return_code"] = rc
+        results["canonical"]["status"] = "ok" if rc == 0 else "failed"
+        results["canonical"]["output_sha256"] = maybe_sha256(plan["canonical"]["output_wav"])
         if rc != 0:
             failures.append(f"canonical rc={rc}")
     if args.execute in {"ggml", "both"}:
         rc = run_one(plan["ggml"]["command"], str(Path(cfg["ggml_cli"]).resolve().parent.parent.parent), plan["ggml"]["log_path"], {"VIBEVOICE_BACKEND": "cpu"})
+        results["ggml"]["return_code"] = rc
+        results["ggml"]["status"] = "ok" if rc == 0 else "failed"
+        results["ggml"]["output_sha256"] = maybe_sha256(plan["ggml"]["output_wav"])
         if rc != 0:
             failures.append(f"ggml rc={rc}")
+
+    write_json(results_path, results)
 
     if failures:
         sys.stderr.write("eval harness failures: " + ", ".join(failures) + "\n")
