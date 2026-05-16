@@ -1138,17 +1138,9 @@ bool text_has_speaker_prefix(const std::string& text) {
     return std::regex_search(text, re);
 }
 
-// Build the 1.5B prompt as a literal byte-BPE string. The tokenizer's
-// special-token matching rewrites the bracketed markers into single token
-// IDs (151652 / 151653 / 151654 etc.) while the rest is regular text.
-//
-// Mirrors `VibeVoiceProcessor._create_voice_prompt` +
-// `VibeVoiceProcessor.__call__` from the upstream reference repo —
-// each entry in `vae_tok_lens` is one speaker's reference-audio
-// length (in compressed frames), inserted as a separate
-// "Speaker {i}: <vision_start><vision_pad>×N<vision_end>" block.
-std::string build_prompt_15b(const std::vector<int>& vae_tok_lens,
-                             const std::string& text) {
+// Legacy VibeVoice 1.5B prompt builder. Kept for non-KugelAudio paths.
+std::string build_prompt_15b_legacy(const std::vector<int>& vae_tok_lens,
+                                    const std::string& text) {
     int total_pads = 0;
     for (int t : vae_tok_lens) total_pads += t;
 
@@ -1181,6 +1173,36 @@ std::string build_prompt_15b(const std::vector<int>& vae_tok_lens,
     return out;
 }
 
+// Canonical KugelAudio v1 single-speaker prompt builder, matching
+// kugelaudio_open.processors.kugelaudio_processor.KugelAudioProcessor.
+std::string build_kugelaudio_prompt_single_speaker(int vae_tok_len,
+                                                   const std::string& text) {
+    std::string formatted_text = text;
+    while (!formatted_text.empty() &&
+           (formatted_text.back() == ' ' || formatted_text.back() == '\t' ||
+            formatted_text.back() == '\r' || formatted_text.back() == '\n')) {
+        formatted_text.pop_back();
+    }
+    if (formatted_text.rfind("Speaker", 0) != 0) {
+        formatted_text = "Speaker 0: " + formatted_text;
+    }
+
+    std::string out;
+    out.reserve(1024 + static_cast<size_t>(vae_tok_len) * 14 + formatted_text.size());
+    out += " Transform the text provided by various speakers into speech output, utilizing the distinct voice of each respective speaker.\n";
+    out += " Voice input:\n";
+    out += " Speaker 0:";
+    for (int j = 0; j < vae_tok_len; ++j) out += "<|vision_pad|>";
+    out += "\n";
+    out += " Text input:\n";
+    out += " ";
+    out += formatted_text;
+    out += "\n";
+    out += " Speech output:\n";
+    out += "<|vision_start|>";
+    return out;
+}
+
 // Fetch a single row from `tok_embd` (handles fp32 / fp16). Caller passes
 // a destination buffer of `hidden` floats.
 void embed_row(struct ggml_tensor* tok_embd, int id, int hidden, float* dst) {
@@ -1201,6 +1223,13 @@ void embed_row(struct ggml_tensor* tok_embd, int id, int hidden, float* dst) {
 }
 
 }  // namespace
+
+namespace detail {
+std::string build_kugelaudio_prompt_single_speaker_for_test(int vae_tok_len,
+                                                            const std::string& text) {
+    return build_kugelaudio_prompt_single_speaker(vae_tok_len, text);
+}
+}  // namespace detail
 
 namespace {
 int tts_15b_generate(VibeVoiceModel*            model,
@@ -1324,7 +1353,9 @@ int tts_15b_generate(VibeVoiceModel*            model,
     }
 
     // ---- 2. build prompt + tokenize ----
-    const std::string prompt = build_prompt_15b(per_speaker_Tc, text);
+    const std::string prompt = is_kugelaudio
+        ? detail::build_kugelaudio_prompt_single_speaker_for_test(per_speaker_Tc.front(), text)
+        : build_prompt_15b_legacy(per_speaker_Tc, text);
     const auto input_ids = model->tokenizer.encode(prompt);
     if (input_ids.empty()) {
         VV_LOG_ERROR("tts_15b: tokenizer returned no tokens");

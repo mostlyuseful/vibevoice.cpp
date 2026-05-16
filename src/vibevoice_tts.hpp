@@ -176,6 +176,11 @@ int vibevoice_tts_generate(VibeVoiceModel*           model,
                            const VibeVoiceTTSParams& p,
                            std::vector<float>*       samples);
 
+namespace detail {
+std::string build_kugelaudio_prompt_single_speaker_for_test(int vae_tok_len,
+                                                            const std::string& text);
+}
+
 }  // namespace vv
 
 #endif  // VIBEVOICE_TTS_HPP

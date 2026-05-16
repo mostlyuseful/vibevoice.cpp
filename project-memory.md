@@ -86,3 +86,11 @@
   - spread the same information across several logs: harder to assert in tests and noisier for operators
   - log every minor config field again: redundant with the existing shape/scaling summary
 - Affected area: `prd.md` Slice 1 / "Logs state what was detected and what is enabled.".
+
+### KugelAudio prompt-builder split
+- Context: Slice 2 requires prompt-format parity with canonical KugelAudio, but the existing `build_prompt_15b(...)` helper still carries legacy VibeVoice 1.5B multi-speaker semantics and extra `<|vision_start|>...<|vision_end|>` wrapping in the voice-input section.
+- Chosen default: keep the legacy 1.5B prompt builder for non-KugelAudio paths and add a dedicated single-speaker KugelAudio v1 prompt builder that mirrors the canonical processor sections exactly.
+- Rejected alternatives:
+  - replace the existing 1.5B builder for all callers: riskier because it could silently regress legacy VibeVoice-specific tests and flows
+  - keep one builder with many conditional branches: workable, but less readable than an explicit split while prompt semantics are still diverging
+- Affected area: `prd.md` Slice 2 / "Prompt format matches canonical KugelAudio sections...".

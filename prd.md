@@ -86,7 +86,7 @@ Deliver the first true product path: single-speaker TTS from text plus raw refer
 Adapt the prompt builder and tokenizer integration so the runtime matches `../kugelaudio-open` prompt semantics for the supported single-speaker path.
 
 AC:
-- [ ] Prompt format matches canonical KugelAudio sections: system prompt, `Voice input:`, `Text input:`, `Speech output:`.
+- [x] Prompt format matches canonical KugelAudio sections: system prompt, `Voice input:`, `Text input:`, `Speech output:`.
 - [ ] Prompt/tokenization logic is driven by KugelAudio semantics, not old VibeVoice assumptions.
 - [ ] Single-speaker input is the only supported path in v1 and is enforced explicitly.
 
