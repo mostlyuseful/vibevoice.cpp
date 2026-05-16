@@ -1123,10 +1123,11 @@ int vibevoice_tts_generate(VibeVoiceModel*           model,
 
 namespace {
 
-constexpr int kSpeech15bStartId = 151652;  // <|vision_start|>
-constexpr int kSpeech15bEndId   = 151653;  // <|vision_end|>
-constexpr int kSpeech15bDiffId  = 151654;  // <|vision_pad|>
-constexpr int kSpeech15bImgPadId = 151655; // <|image_pad|> — negative branch
+constexpr int kSpeech15bStartId = 151652;   // <|vision_start|>
+constexpr int kSpeech15bEndId   = 151653;   // <|vision_end|>
+constexpr int kSpeech15bDiffId  = 151654;   // <|vision_pad|>
+constexpr int kSpeech15bEosId   = 151643;   // Qwen EOS used by canonical speech loop
+constexpr int kSpeech15bImgPadId = 151655;  // <|image_pad|> — negative branch
 constexpr int kSpeech15bCompressRatio = 3200;
 
 // Returns true if `text` contains any explicit "Speaker N:" marker.
@@ -1139,6 +1140,32 @@ bool text_has_speaker_prefix(const std::string& text) {
 }  // namespace
 
 namespace detail {
+
+std::vector<int32_t> kugelaudio_valid_speech_token_ids() {
+    return {kSpeech15bStartId, kSpeech15bEndId, kSpeech15bDiffId, kSpeech15bEosId};
+}
+
+int select_kugelaudio_speech_token_from_logits(const std::vector<float>& logits) {
+    const auto valid_ids = kugelaudio_valid_speech_token_ids();
+    int   best_id = -1;
+    float best_v  = -std::numeric_limits<float>::infinity();
+    for (const int32_t id : valid_ids) {
+        if (id < 0 || static_cast<size_t>(id) >= logits.size()) continue;
+        if (best_id < 0 || logits[static_cast<size_t>(id)] > best_v) {
+            best_v = logits[static_cast<size_t>(id)];
+            best_id = id;
+        }
+    }
+    return best_id;
+}
+
+std::vector<int32_t> kugelaudio_valid_speech_token_ids_for_test() {
+    return kugelaudio_valid_speech_token_ids();
+}
+
+int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits) {
+    return select_kugelaudio_speech_token_from_logits(logits);
+}
 
 bool validate_kugelaudio_single_speaker_request(const std::string& text,
                                                 const VibeVoiceTTSParams& p,
@@ -1332,6 +1359,7 @@ void build_kugelaudio_prompt_input_ids_for_test(const Tokenizer& tokenizer,
 int kugelaudio_speech_start_id_for_test() { return kSpeech15bStartId; }
 int kugelaudio_speech_end_id_for_test() { return kSpeech15bEndId; }
 int kugelaudio_speech_diffusion_id_for_test() { return kSpeech15bDiffId; }
+int kugelaudio_eos_id_for_test() { return kSpeech15bEosId; }
 int kugelaudio_image_pad_id_for_test() { return kSpeech15bImgPadId; }
 }  // namespace detail
 
@@ -1662,18 +1690,24 @@ int tts_15b_generate(VibeVoiceModel*            model,
         auto logits = detail::lm_head_logits_last(model->lm_head, hidden_last,
                                                    hidden, cfg.vocab_size);
         if (static_cast<int>(logits.size()) == cfg.vocab_size) {
-            int   best_id = 0;
-            float best_v  = -std::numeric_limits<float>::infinity();
-            for (int i = 0; i < cfg.vocab_size; ++i) {
-                if (logits[i] > best_v) { best_v = logits[i]; best_id = i; }
+            const int best_id = is_kugelaudio
+                ? detail::select_kugelaudio_speech_token_from_logits(logits)
+                : [&logits, &cfg]() {
+                    int   best_id = 0;
+                    float best_v  = -std::numeric_limits<float>::infinity();
+                    for (int i = 0; i < cfg.vocab_size; ++i) {
+                        if (logits[i] > best_v) { best_v = logits[i]; best_id = i; }
+                    }
+                    return best_id;
+                }();
+            if (p.verbose && (total_frames % 8 == 0 || best_id == kSpeech15bEndId || best_id == kSpeech15bEosId)) {
+                std::fprintf(stderr,
+                             "[tts_15b] frame %d: constrained_next=%d (end=%d eos=%d)\n",
+                             total_frames, best_id, kSpeech15bEndId, kSpeech15bEosId);
             }
-            if (p.verbose && (total_frames % 8 == 0 || best_id == kSpeech15bEndId)) {
-                std::fprintf(stderr, "[tts_15b] frame %d: argmax=%d (end=%d)\n",
-                             total_frames, best_id, kSpeech15bEndId);
-            }
-            if (best_id == kSpeech15bEndId) {
+            if (best_id == kSpeech15bEndId || best_id == kSpeech15bEosId) {
                 if (p.verbose) std::fprintf(stderr,
-                    "[tts_15b] speech_end at frame %d\n", total_frames);
+                    "[tts_15b] speech_end/eos at frame %d\n", total_frames);
                 finished = true;
             }
         }

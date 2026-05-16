@@ -147,7 +147,7 @@ Deliver a generation loop that behaves close enough to canonical KugelAudio to s
 Adapt the inference loop so it follows canonical KugelAudio behavior for valid-token restriction, classifier-free guidance, diffusion-token handling, and end-of-speech detection.
 
 AC:
-- [ ] The runtime constrains generation to the canonical speech-path token set.
+- [x] The runtime constrains generation to the canonical speech-path token set.
 - [ ] CFG behavior is aligned with the canonical implementation for the supported path.
 - [ ] Speech-end behavior is aligned with canonical handling and terminates correctly.
 - [ ] Final waveform decode path is integrated and produces usable output.

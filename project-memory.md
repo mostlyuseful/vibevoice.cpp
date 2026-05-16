@@ -174,3 +174,11 @@
   - keep short per-case rejections only: accurate, but weaker at telling operators what *is* supported
   - push the explanatory wording into CLI docs only: too weak for runtime/C API callers who only see the returned error/log text
 - Affected area: `prd.md` Slice 2 / "Error text explains the v1 limitation.".
+
+### KugelAudio speech-token constraint source
+- Context: the first Slice 3 parity item requires constraining LM decisions to the canonical speech-path token set, but the current runtime does not yet load a dedicated EOS token ID from tokenizer/model metadata.
+- Chosen default: hardcode the supported KugelAudio v1 token quartet from the canonical open checkpoint for now: `speech_start=151652`, `speech_end=151653`, `speech_diffusion=151654`, and `eos=151643`, and use that set when selecting speech-path tokens in the 1.5B KugelAudio loop.
+- Rejected alternatives:
+  - derive EOS from whatever tokenizer happens to be loaded at runtime: cleaner later, but underconstrained in the current C++ load path and risks drifting from the checkpoint contract being ported
+  - defer token constraining until the full canonical token-by-token loop lands: broader delay than needed for this focused parity increment
+- Affected area: `prd.md` Slice 3 / "The runtime constrains generation to the canonical speech-path token set.".
