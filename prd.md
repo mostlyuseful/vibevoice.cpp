@@ -101,7 +101,7 @@ Ensure speech placeholder token positions, speech start/end handling, and any pa
 
 AC:
 - [x] Special token IDs and placeholder semantics match the supported KugelAudio checkpoint.
-- [ ] Placeholder positions are stable and testable for fixed inputs.
+- [x] Placeholder positions are stable and testable for fixed inputs.
 - [ ] The runtime no longer assumes VibeVoice-only prompt token roles where KugelAudio differs.
 
 Testing:

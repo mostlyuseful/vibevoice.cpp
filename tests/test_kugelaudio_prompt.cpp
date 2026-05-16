@@ -1,8 +1,19 @@
 #include "vibevoice_tts.hpp"
+#include "model_loader.hpp"
 
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
+
+namespace {
+bool file_ok(const char* p) {
+    if (!p || !*p) return false;
+    std::ifstream f(p, std::ios::binary);
+    return f.good();
+}
+}
 
 int main() {
     const std::string prompt = vv::detail::build_kugelaudio_prompt_single_speaker_for_test(
@@ -49,6 +60,51 @@ int main() {
     if (prompt_prefixed.find("<|vision_start|><|vision_pad|><|vision_end|>") != std::string::npos) {
         std::fprintf(stderr, "FAIL: canonical KugelAudio voice section should not wrap placeholders in vision_start/vision_end\n");
         return 3;
+    }
+
+    const char* tok_path = std::getenv("VIBEVOICE_KUGELAUDIO_PROMPT_TOKENIZER");
+    if (!file_ok(tok_path)) {
+        std::fprintf(stderr, "skip: set VIBEVOICE_KUGELAUDIO_PROMPT_TOKENIZER\n");
+        return 77;
+    }
+
+    vv::ModelLoader loader;
+    if (!loader.load(tok_path)) {
+        std::fprintf(stderr, "FAIL: failed to load tokenizer fixture %s\n", tok_path);
+        return 6;
+    }
+    vv::Tokenizer tok;
+    if (!tok.load(loader)) {
+        std::fprintf(stderr, "FAIL: tokenizer load failed for %s\n", tok_path);
+        return 7;
+    }
+
+    std::vector<int32_t> input_ids;
+    std::vector<int> pad_positions;
+    vv::detail::build_kugelaudio_prompt_input_ids_for_test(tok, 3, "Hello world.", &input_ids, &pad_positions);
+    const std::string system_prompt =
+        " Transform the text provided by various speakers into speech output, utilizing the distinct voice of each respective speaker.\n";
+    const std::string voice_header = " Voice input:\n";
+    const std::string speaker_prefix = " Speaker 0:";
+    const int expected_first_pad = static_cast<int>(system_prompt.size() + voice_header.size() + speaker_prefix.size());
+    const std::vector<int> expected_pad_positions = {
+        expected_first_pad,
+        expected_first_pad + 1,
+        expected_first_pad + 2,
+    };
+    if (pad_positions != expected_pad_positions) {
+        std::fprintf(stderr, "FAIL: pad positions mismatch\n");
+        return 8;
+    }
+    for (int pos : pad_positions) {
+        if (input_ids[pos] != vv::detail::kugelaudio_speech_diffusion_id_for_test()) {
+            std::fprintf(stderr, "FAIL: pad position %d does not contain diffusion placeholder id\n", pos);
+            return 9;
+        }
+    }
+    if (input_ids.back() != vv::detail::kugelaudio_speech_start_id_for_test()) {
+        std::fprintf(stderr, "FAIL: final prompt token is not speech_start\n");
+        return 10;
     }
 
     std::printf("KugelAudio prompt builder OK\n");

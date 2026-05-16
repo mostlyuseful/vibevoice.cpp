@@ -1304,6 +1304,14 @@ std::vector<int32_t> build_kugelaudio_inserted_speech_tokens_for_test(int vae_to
     return ids;
 }
 
+void build_kugelaudio_prompt_input_ids_for_test(const Tokenizer& tokenizer,
+                                                int vae_tok_len,
+                                                const std::string& text,
+                                                std::vector<int32_t>* input_ids,
+                                                std::vector<int>* pad_positions) {
+    build_kugelaudio_prompt_input_ids(tokenizer, vae_tok_len, text, input_ids, pad_positions);
+}
+
 int kugelaudio_speech_start_id_for_test() { return kSpeech15bStartId; }
 int kugelaudio_speech_end_id_for_test() { return kSpeech15bEndId; }
 int kugelaudio_speech_diffusion_id_for_test() { return kSpeech15bDiffId; }

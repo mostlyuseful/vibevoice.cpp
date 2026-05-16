@@ -118,3 +118,11 @@
   - leave the mapping implicit in scattered local constants only: works, but harder to validate and easier to drift accidentally
   - insert `<|vision_end|>` into the single-speaker voice-input section like legacy VibeVoice 1.5B: diverges from the canonical KugelAudio processor semantics
 - Affected area: `prd.md` Slice 2 / "Special token IDs and placeholder semantics match the supported KugelAudio checkpoint.".
+
+### KugelAudio placeholder-position test fixture
+- Context: the next prompt sub-task requires placeholder positions to be stable and testable for fixed inputs, but the repo does not ship a reusable tokenizer GGUF fixture by default.
+- Chosen default: use a tiny synthetic byte-level tokenizer GGUF fixture for the prompt-position unit test, with the canonical speech special tokens registered at the KugelAudio IDs.
+- Rejected alternatives:
+  - depend on a full downloaded production tokenizer fixture: heavier and less hermetic for a small prompt-layout test
+  - test only logical placeholder counts without token positions: too weak for the PRD item
+- Affected area: `prd.md` Slice 2 / "Placeholder positions are stable and testable for fixed inputs.".
