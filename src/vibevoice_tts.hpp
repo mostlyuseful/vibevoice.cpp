@@ -148,15 +148,17 @@ struct VibeVoiceTTSParams {
     // model is a 1.5b variant.
     const VibeVoiceVoice* voice = nullptr;
 
-    // 1.5b conditioning: one reference WAV per speaker. Each WAV is
-    // encoded inline through at_enc + st_enc + connectors at synthesis
-    // time and spliced into the prompt's Voice-input block for that
-    // speaker. Ignored when the model is a realtime-0.5b variant.
+    // Raw-reference conditioning surface.
     //
-    // Single-speaker: pass a one-element vector. Multi-speaker: pass
-    // one entry per distinct Speaker {N}: in the dialog. The user's
-    // `text` should then itself contain `Speaker 0: ...`,
-    // `Speaker 1: ...` lines (auto-wrapped as Speaker 0 if it doesn't).
+    // Legacy VibeVoice 1.5B supports one reference WAV per speaker and
+    // speaker-tagged dialog text. That behavior is retained for legacy
+    // non-KugelAudio paths only.
+    //
+    // KugelAudio v1 acceptance is narrower by design: pass exactly one raw
+    // reference WAV and plain untagged text. Wider request shapes (for
+    // example multi-speaker or alternative conditioning layouts) are deferred
+    // and should widen through `detail::KugelAudioRequestPolicy`, not by
+    // changing this v1 call surface ad hoc.
     std::vector<std::string> ref_audio_paths;
 
     int      max_speech_frames = 200;
@@ -167,9 +169,12 @@ struct VibeVoiceTTSParams {
 };
 
 // Generate audio for `text`. Dispatches on `model->variant`:
-//   * realtime-0.5b -> uses `p.voice` (pre-baked voice gguf state).
-//   * 1.5b          -> uses `p.ref_audio_path` (raw reference WAV;
-//                     runtime voice cloning, no separate voice gguf).
+//   * realtime-0.5b -> uses `p.voice` (pre-baked voice gguf state; legacy
+//                      VibeVoice-only path, not KugelAudio v1 acceptance).
+//   * 1.5b          -> uses `p.ref_audio_paths` (raw reference WAV(s)). For
+//                      KugelAudio v1, exactly one raw reference audio input is
+//                      accepted; wider shapes remain deferred behind the
+//                      request-policy seam.
 // Output samples are 24 kHz mono float32. Returns 0 on success.
 int vibevoice_tts_generate(VibeVoiceModel*           model,
                            const std::string&        text,

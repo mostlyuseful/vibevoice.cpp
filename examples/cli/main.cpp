@@ -173,8 +173,9 @@ int cmd_tts(int argc, char** argv) {
             std::fprintf(stderr,
                          "tts: 1.5b model requires at least one --ref-audio "
                          "(raw 24 kHz mono WAV). Repeat --ref-audio per speaker "
-                         "for multi-speaker dialog. Pre-baked --voice gguf "
-                         "files are realtime-0.5B only.\n");
+                         "for multi-speaker dialog on the legacy VibeVoice 1.5B "
+                         "path only; this is not part of KugelAudio v1 acceptance. "
+                         "Pre-baked --voice gguf files are realtime-0.5B only.\n");
         }
         return 1;
     }

@@ -418,3 +418,11 @@
   - scatter one-off TODO comments only in code: too easy to miss and too weak as maintainer guidance
   - create a brand-new V2 design doc: broader than needed while the parity note already tracks the relevant acceptance/deferred boundaries
 - Affected area: `prd.md` Slice 5 / "Deferred-feature seams are identified in code/docs where relevant.".
+
+### KugelAudio critical-path non-feature marking
+- Context: the next Slice 5 item requires ensuring no V2 feature is half-implemented in the critical path, but the main TTS request header still described legacy multi-speaker reference semantics without clearly separating them from the KugelAudio v1 surface.
+- Chosen default: mark the shared `VibeVoiceTTSParams` surface explicitly as a legacy-vs-KugelAudio boundary. Update `src/vibevoice_tts.hpp` comments to say legacy VibeVoice 1.5B wider shapes are retained only for non-KugelAudio paths, while KugelAudio v1 stays narrow behind `detail::KugelAudioRequestPolicy`. Mirror that in the CLI 1.5B help/error text.
+- Rejected alternatives:
+  - remove the legacy semantics from the shared TTS params comment entirely: would hide real legacy behavior still present for regression/migration use
+  - leave the header comment ambiguous and rely on external docs: too easy for future work to interpret as “almost-supported” V2 behavior in the critical path
+- Affected area: `prd.md` Slice 5 / "No V2 feature is half-implemented in the critical path.".
