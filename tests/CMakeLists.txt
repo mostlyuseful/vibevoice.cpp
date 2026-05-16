@@ -39,6 +39,7 @@ vv_add_test(test_kugelaudio_capi)
 vv_add_test(test_kugelaudio_cli_conditioning)
 vv_add_test(test_kugelaudio_cli_e2e)
 vv_add_test(test_kugelaudio_cli_rejections)
+vv_add_test(test_kugelaudio_cli_seed)
 vv_add_test(test_kugelaudio_determinism)
 vv_add_test(test_kugelaudio_generation_tokens)
 vv_add_test(test_kugelaudio_reused_components)
@@ -69,7 +70,8 @@ set_tests_properties(test_tokenizer test_rope test_qwen2_block test_qwen2_reside
                      test_kugelaudio_prompt test_kugelaudio_conditioning
                      test_kugelaudio_capi test_kugelaudio_cli_conditioning
                      test_kugelaudio_cli_e2e test_kugelaudio_cli_rejections
-                     test_kugelaudio_determinism test_kugelaudio_generation_tokens
+                     test_kugelaudio_cli_seed test_kugelaudio_determinism
+                     test_kugelaudio_generation_tokens
                      test_kugelaudio_reused_components
                      test_kugelaudio_reuse_coverage test_kugelaudio_decode_smoke
                      test_e2e_tts test_e2e_asr

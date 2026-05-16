@@ -262,3 +262,11 @@
   - allow approximate equality only: weaker than needed for regression-oriented CPU determinism
   - test whichever backend happens to initialize first: ambiguous, because the PRD item is explicitly about CPU eval determinism
 - Affected area: `prd.md` Slice 3 / deterministic seeded runtime behavior on CPU.
+
+### KugelAudio CLI seed-plumbing proof point
+- Context: the next seeded-runtime item requires seed plumbing to be exposed end-to-end through the CLI/eval path, but the repo does not yet have the later eval harness and the CLI already accepts `--seed`.
+- Chosen default: prove the plumbing at the current supported public surface by adding a CLI test that runs `vibevoice-cli tts` twice with the same `--seed` on CPU and requires byte-identical emitted WAVs.
+- Rejected alternatives:
+  - wait for the future eval harness before testing seed plumbing: too late for the current PRD item
+  - test only parser/default handling without generating audio: weaker than an end-to-end CLI proof
+- Affected area: `prd.md` Slice 3 / "Seed plumbing is exposed end-to-end through the CLI/eval path.".
