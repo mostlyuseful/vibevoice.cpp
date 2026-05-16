@@ -206,3 +206,11 @@
   - pretend the synthetic fixture proves decoder usability: fast, but misleading because its tensors are not shape/value-valid for real decoder execution
   - defer all decode validation to the later divergence harness: too late for this slice's explicit acceptance item
 - Affected area: `prd.md` Slice 3 / "Final waveform decode path is integrated and produces usable output.".
+
+### KugelAudio reused-component validation scope
+- Context: the next reuse item asks whether the existing diffusion/decoder/connector pieces are still the implementation path for KugelAudio where behavior remains valid, but only diffusion (`test_dpm_solver`) and decoder (`test_acoustic`) already had direct low-level coverage.
+- Chosen default: keep reusing the existing `dpm_solver_sample`, acoustic decoder, and speech-connector codepaths, and close the test gap by adding a small connector unit test rather than introducing a KugelAudio-specific connector fork.
+- Rejected alternatives:
+  - add a separate KugelAudio-only connector implementation for easier testing: broader and contrary to the slice goal of preserving safe reuse
+  - rely on end-to-end smokes alone: weaker signal when the reuse claim is specifically about low-level shared components
+- Affected area: `prd.md` Slice 3 / "Existing diffusion/decoder/connector code is reused where behavior remains valid.".

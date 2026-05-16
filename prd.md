@@ -162,7 +162,7 @@ Testing:
 Preserve maximum reuse of current ggml code where possible, but patch any semantic drift discovered during parity work.
 
 AC:
-- [ ] Existing diffusion/decoder/connector code is reused where behavior remains valid.
+- [x] Existing diffusion/decoder/connector code is reused where behavior remains valid.
 - [ ] Any divergence from canonical behavior is either corrected or explicitly justified.
 - [ ] Reused code paths remain covered by targeted tests.
 

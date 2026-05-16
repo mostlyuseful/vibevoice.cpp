@@ -1187,6 +1187,13 @@ void apply_kugelaudio_speech_end_penalty_for_test(std::vector<float>* logits) {
     apply_kugelaudio_speech_end_penalty(logits);
 }
 
+std::vector<float> run_speech_connector_for_test(const VibeVoiceConfig& cfg,
+                                                 const VibeVoiceWeights& w,
+                                                 const float* x,
+                                                 int batch) {
+    return run_speech_connector(cfg, w, x, batch);
+}
+
 int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits) {
     return select_kugelaudio_speech_token_from_logits(logits);
 }
