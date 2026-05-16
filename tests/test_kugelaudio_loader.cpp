@@ -1,10 +1,16 @@
 #include "vibevoice_tts.hpp"
+#include "vibevoice.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 
 namespace {
+std::string g_last_log;
+
+void capture_log(vv_log_level, const char* msg, void*) {
+    g_last_log = msg ? msg : "";
+}
 
 bool file_ok(const char* p) {
     if (!p || !*p) return false;
@@ -36,6 +42,8 @@ int main() {
         return 77;
     }
 
+    vv_set_log_callback(capture_log, nullptr);
+
     vv::VibeVoiceModel model;
     if (!vv::vibevoice_load(ok_path, &model)) {
         std::fprintf(stderr, "FAIL: vibevoice_load rejected supported KugelAudio fixture\n");
@@ -58,16 +66,26 @@ int main() {
         return 4;
     }
 
+    g_last_log.clear();
     vv::VibeVoiceModel bad_schema;
     if (vv::vibevoice_load(bad_schema_path, &bad_schema)) {
         std::fprintf(stderr, "FAIL: unsupported schema fixture loaded successfully\n");
         return 5;
     }
+    if (g_last_log.find("unsupported KugelAudio schema/config") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: bad schema log did not identify schema/config error: %s\n", g_last_log.c_str());
+        return 10;
+    }
 
+    g_last_log.clear();
     vv::VibeVoiceModel bad_checkpoint;
     if (vv::vibevoice_load(bad_checkpoint_path, &bad_checkpoint)) {
         std::fprintf(stderr, "FAIL: unsupported checkpoint fixture loaded successfully\n");
         return 6;
+    }
+    if (g_last_log.find("unsupported KugelAudio schema/config") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: bad checkpoint log did not identify schema/config error: %s\n", g_last_log.c_str());
+        return 11;
     }
 
     vv::VibeVoiceModel missing_semantic;
@@ -82,11 +100,18 @@ int main() {
         return 8;
     }
 
+    g_last_log.clear();
     vv::VibeVoiceModel missing_metadata;
     if (vv::vibevoice_load(missing_metadata_path, &missing_metadata)) {
         std::fprintf(stderr, "FAIL: missing metadata fixture loaded successfully\n");
         return 9;
     }
+    if (g_last_log.find("unsupported KugelAudio schema/config") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: missing metadata log did not identify schema/config error: %s\n", g_last_log.c_str());
+        return 12;
+    }
+
+    vv_set_log_callback(nullptr, nullptr);
 
     std::printf("KugelAudio loader contract OK\n");
     return 0;

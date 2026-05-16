@@ -91,7 +91,7 @@ bool require_metadata_keys(const ModelLoader& m,
         if (i) joined += ", ";
         joined += missing[i];
     }
-    VV_LOG_ERROR("vibevoice_load: %s missing required metadata: %s",
+    VV_LOG_ERROR("vibevoice_load: unsupported KugelAudio schema/config: %s missing required metadata: %s",
                  component, joined.c_str());
     return false;
 }
@@ -174,18 +174,18 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
         }
         const int schema = m.get_i32("kugelaudio.schema_version", 0);
         if (schema != 1) {
-            VV_LOG_ERROR("vibevoice_load: unsupported kugelaudio.schema_version=%d (want 1)", schema);
+            VV_LOG_ERROR("vibevoice_load: unsupported KugelAudio schema/config: kugelaudio.schema_version=%d (want 1)", schema);
             return false;
         }
         const std::string arch = m.get_str("kugelaudio.architecture", {});
         if (arch != "kugelaudio") {
-            VV_LOG_ERROR("vibevoice_load: unsupported kugelaudio.architecture=%s (want kugelaudio)",
+            VV_LOG_ERROR("vibevoice_load: unsupported KugelAudio schema/config: kugelaudio.architecture=%s (want kugelaudio)",
                          arch.empty() ? "<missing>" : arch.c_str());
             return false;
         }
         const std::string checkpoint = m.get_str("kugelaudio.checkpoint", {});
         if (checkpoint != "kugelaudio-0-open") {
-            VV_LOG_ERROR("vibevoice_load: unsupported kugelaudio.checkpoint=%s (want kugelaudio-0-open)",
+            VV_LOG_ERROR("vibevoice_load: unsupported KugelAudio schema/config: kugelaudio.checkpoint=%s (want kugelaudio-0-open)",
                          checkpoint.empty() ? "<missing>" : checkpoint.c_str());
             return false;
         }
@@ -1211,16 +1211,16 @@ int tts_15b_generate(VibeVoiceModel*            model,
     const bool is_kugelaudio = model->loader.has_key("kugelaudio.architecture");
     if (is_kugelaudio) {
         if (p.voice) {
-            VV_LOG_ERROR("tts_15b: KugelAudio v1 does not support pre-baked voice gguf conditioning; use exactly one raw reference audio input");
+            VV_LOG_ERROR("tts_15b: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; use exactly one raw reference audio input");
             return -20;
         }
         if (p.ref_audio_paths.size() != 1) {
-            VV_LOG_ERROR("tts_15b: KugelAudio v1 requires exactly one raw reference audio input; got %zu",
+            VV_LOG_ERROR("tts_15b: unsupported KugelAudio runtime feature: expected exactly one raw reference audio input, got %zu",
                          p.ref_audio_paths.size());
             return -21;
         }
         if (text_has_speaker_prefix(text)) {
-            VV_LOG_ERROR("tts_15b: KugelAudio v1 does not support speaker-tagged / multi-speaker dialog input");
+            VV_LOG_ERROR("tts_15b: unsupported KugelAudio runtime feature: speaker-tagged / multi-speaker dialog input");
             return -22;
         }
     }
