@@ -1,0 +1,15 @@
+{
+  "canonical_repo": "../../../kugelaudio-open",
+  "canonical_model": "kugelaudio/kugelaudio-0-open",
+  "ggml_cli": "../../build/bin/vibevoice-cli",
+  "ggml_model": "../../artifacts/models/kugelaudio-f16.gguf",
+  "ggml_tokenizer": "../../artifacts/models/tokenizer.gguf",
+  "reference_audio": "../../artifacts/fixtures/reference.wav",
+  "text": "Hello world.",
+  "output_dir": "../../artifacts/eval/kugelaudio-smoke",
+  "seed": 12345,
+  "cfg_scale": 1.0,
+  "steps": 8,
+  "max_frames": 32,
+  "max_new_tokens": 4096
+}

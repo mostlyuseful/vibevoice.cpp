@@ -208,7 +208,7 @@ Deliver the validation harness that proves the port is useful, not just operatio
 Create a reproducible evaluation path comparing this runtime to `../kugelaudio-open` on the same checkpoint, prompt, reference audio, seed, and generation settings.
 
 AC:
-- [ ] Evaluation setup is scripted and reproducible.
+- [x] Evaluation setup is scripted and reproducible.
 - [ ] Inputs/settings are pinned and shared between canonical and ggml runs.
 - [ ] Results are logged in a form suitable for regression checks.
 
