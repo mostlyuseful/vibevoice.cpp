@@ -83,7 +83,12 @@ def add_diffusion_head(w, head_layers):
             add_tensor(w, f"dh.layer_{i}.{suffix}")
 
 
-def write_fixture(path: Path, *, schema_version: int, checkpoint: str):
+def write_fixture(path: Path, *, schema_version: int, checkpoint: str, omit_prefixes=()):
+    omitted = tuple(omit_prefixes)
+
+    def keep(name: str) -> bool:
+        return not any(name.startswith(prefix) for prefix in omitted)
+
     w = gguf.GGUFWriter(str(path), arch="vibevoice")
     w.add_uint32("kugelaudio.schema_version", schema_version)
     w.add_string("kugelaudio.architecture", "kugelaudio")
@@ -107,19 +112,23 @@ def write_fixture(path: Path, *, schema_version: int, checkpoint: str):
     w.add_uint32("kugelaudio.sample_rate", 24000)
 
     add_qwen_stack(w, "lm", 8)
-    add_tensor(w, "lm.output_norm.weight")
-    add_tensor(w, "lm_head.weight")
-    add_tensor(w, "speech.scaling")
-    add_tensor(w, "speech.bias")
+    for name in ["lm.output_norm.weight", "lm_head.weight", "speech.scaling", "speech.bias"]:
+        if keep(name):
+            add_tensor(w, name)
     for name in [
         "ac.fc1.weight", "ac.fc1.bias", "ac.norm.weight", "ac.fc2.weight", "ac.fc2.bias",
         "sc.fc1.weight", "sc.fc1.bias", "sc.norm.weight", "sc.fc2.weight", "sc.fc2.bias",
     ]:
-        add_tensor(w, name)
-    add_diffusion_head(w, 4)
-    add_decoder(w, "at.dec", [8, 3, 3, 3, 3, 3, 3], 6)
-    add_encoder(w, "at.enc", [3, 3, 3, 3, 3, 3, 8], 6)
-    add_encoder(w, "st.enc", [3, 3, 3, 3, 3, 3, 8], 6)
+        if keep(name):
+            add_tensor(w, name)
+    if keep("dh."):
+        add_diffusion_head(w, 4)
+    if keep("at.dec."):
+        add_decoder(w, "at.dec", [8, 3, 3, 3, 3, 3, 3], 6)
+    if keep("at.enc."):
+        add_encoder(w, "at.enc", [3, 3, 3, 3, 3, 3, 8], 6)
+    if keep("st.enc."):
+        add_encoder(w, "st.enc", [3, 3, 3, 3, 3, 3, 8], 6)
 
     w.write_header_to_file()
     w.write_kv_data_to_file()
@@ -137,10 +146,14 @@ def main():
     write_fixture(out_dir / "kugelaudio_loader_ok.gguf", schema_version=1, checkpoint="kugelaudio-0-open")
     write_fixture(out_dir / "kugelaudio_loader_bad_schema.gguf", schema_version=2, checkpoint="kugelaudio-0-open")
     write_fixture(out_dir / "kugelaudio_loader_bad_checkpoint.gguf", schema_version=1, checkpoint="kugelaudio-1-open")
+    write_fixture(out_dir / "kugelaudio_loader_missing_semantic.gguf", schema_version=1, checkpoint="kugelaudio-0-open", omit_prefixes=("st.enc.", "sc."))
+    write_fixture(out_dir / "kugelaudio_loader_missing_acoustic.gguf", schema_version=1, checkpoint="kugelaudio-0-open", omit_prefixes=("at.dec.",))
     print(json.dumps({
         "ok": str(out_dir / "kugelaudio_loader_ok.gguf"),
         "bad_schema": str(out_dir / "kugelaudio_loader_bad_schema.gguf"),
         "bad_checkpoint": str(out_dir / "kugelaudio_loader_bad_checkpoint.gguf"),
+        "missing_semantic": str(out_dir / "kugelaudio_loader_missing_semantic.gguf"),
+        "missing_acoustic": str(out_dir / "kugelaudio_loader_missing_acoustic.gguf"),
     }))
 
 

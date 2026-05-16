@@ -60,6 +60,24 @@ bool has_meta_i32(const ModelLoader& m, const char* key) {
     return m.get_i64(key, INT64_MIN) != INT64_MIN;
 }
 
+bool require_named_tensors(const ModelLoader& m,
+                           std::initializer_list<const char*> names,
+                           const char* component) {
+    std::vector<std::string> missing;
+    for (const char* name : names) {
+        if (!m.has(name)) missing.emplace_back(name);
+    }
+    if (missing.empty()) return true;
+    std::string joined;
+    for (size_t i = 0; i < missing.size(); ++i) {
+        if (i) joined += ", ";
+        joined += missing[i];
+    }
+    VV_LOG_ERROR("vibevoice_load: %s missing required tensors: %s",
+                 component, joined.c_str());
+    return false;
+}
+
 bool load_qwen2_layer(const ModelLoader& m, const std::string& prefix,
                       Qwen2LayerWeights* out) {
     auto get = [&](const char* n) { return m.tensor(prefix + n); };
@@ -185,18 +203,24 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
     }
 
     // ---- acoustic connector (always present) ----
+    if (!require_named_tensors(m,
+            {"ac.fc1.weight", "ac.fc2.weight", "ac.norm.weight"},
+            "acoustic connector (ac.*)")) {
+        return false;
+    }
     w.ac_fc1_w = m.tensor("ac.fc1.weight");
     w.ac_fc1_b = m.tensor("ac.fc1.bias");
     w.ac_norm  = m.tensor("ac.norm.weight");
     w.ac_fc2_w = m.tensor("ac.fc2.weight");
     w.ac_fc2_b = m.tensor("ac.fc2.bias");
-    if (!w.ac_fc1_w || !w.ac_fc2_w) {
-        VV_LOG_ERROR("vibevoice_load: acoustic connector missing");
-        return false;
-    }
 
     if (is_realtime) {
         // ---- TTS-specific: EOS classifier + diffusion head + acoustic decoder ----
+        if (!require_named_tensors(m,
+                {"at.dec.stem.weight", "at.dec.head.weight", "dh.cond_proj"},
+                "TTS acoustic decoder / diffusion head")) {
+            return false;
+        }
         w.eos_fc1_w = m.tensor("eos.fc1.weight");
         w.eos_fc1_b = m.tensor("eos.fc1.bias");
         w.eos_fc2_w = m.tensor("eos.fc2.weight");
@@ -219,6 +243,11 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
     if (is_15b) {
         // ---- 1.5B: single-stack LM + diffusion head + decoder + encoders ----
         // No EOS classifier (uses LM logits + speech_end token instead).
+        if (!require_named_tensors(m,
+                {"at.dec.stem.weight", "at.dec.head.weight", "dh.cond_proj"},
+                "raw-reference TTS acoustic decoder / diffusion head")) {
+            return false;
+        }
         DiffusionHeadConfig dhc;
         dhc.hidden      = c.hidden;
         dhc.latent      = c.latent;
@@ -251,6 +280,11 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
         auto enc_depths = get_meta_i32_array_any(m, {"vibevoice.acoustic.encoder_depths", "kugelaudio.acoustic.encoder_depths"});
         if (!enc_depths.empty()) enc_cfg.depths.assign(enc_depths.begin(), enc_depths.end());
 
+        if (!require_named_tensors(m,
+                {"at.enc.stem.weight", "at.enc.head.weight"},
+                "acoustic encoder (at.enc.*)")) {
+            return false;
+        }
         if (!load_encoder(m, "at.enc", enc_cfg, &out->at_enc)) {
             VV_LOG_ERROR("vibevoice_load: acoustic encoder load failed");
             return false;
@@ -272,8 +306,18 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
         out->semantic_cfg.kernel_stem = 7;
         out->semantic_cfg.kernel_head = 7;
         out->semantic_cfg.ffn_mult    = 4;
+        if (!require_named_tensors(m,
+                {"st.enc.stem.weight", "st.enc.head.weight"},
+                "semantic encoder (st.enc.*)")) {
+            return false;
+        }
         if (!load_encoder(m, "st.enc", out->semantic_cfg, &out->st_enc)) {
             VV_LOG_ERROR("vibevoice_load: semantic encoder load failed");
+            return false;
+        }
+        if (!require_named_tensors(m,
+                {"sc.fc1.weight", "sc.fc2.weight", "sc.norm.weight", "lm_head.weight"},
+                "semantic connector (sc.*) or lm_head")) {
             return false;
         }
         out->sc_fc1_w = m.tensor("sc.fc1.weight");
@@ -282,10 +326,6 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
         out->sc_fc2_w = m.tensor("sc.fc2.weight");
         out->sc_fc2_b = m.tensor("sc.fc2.bias");
         out->lm_head  = m.tensor("lm_head.weight");
-        if (!out->sc_fc1_w || !out->sc_fc2_w || !out->lm_head) {
-            VV_LOG_ERROR("vibevoice_load: semantic connector or lm_head missing");
-            return false;
-        }
         // ASR also has full output_norm
         if (!w.tlm_output_norm) w.tlm_output_norm = m.tensor("lm.output_norm.weight");
     }

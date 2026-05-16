@@ -54,3 +54,11 @@
   - emit the full raw missing-tensor list only: technically complete, but too noisy for large failures
   - report only the first missing tensor: compact, but not actionable enough for converter/debug work
 - Affected area: `prd.md` Slice 1 / "Missing required tensors fail fast with actionable diagnostics.".
+
+### Loader submodule failure anchors
+- Context: the next loader increment requires semantic/acoustic submodule failures to be clear, but the existing runtime mostly fails later inside generic tensor-loading helpers.
+- Chosen default: add explicit preflight checks for representative anchor tensors per submodule (`at.dec`, `at.enc`, `st.enc`, `sc.*`, `ac.*`) before deeper loading, so failures name the missing submodule and example required tensors.
+- Rejected alternatives:
+  - rely only on lower-level `load_encoder` / `load_decoder` failures: works eventually, but error messages are less obviously tied to the missing high-level submodule
+  - enumerate every tensor name in the loader error: too noisy compared with a targeted submodule-level diagnosis
+- Affected area: `prd.md` Slice 1 / "Missing semantic/acoustic submodules fail clearly.".
