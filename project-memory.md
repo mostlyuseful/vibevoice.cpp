@@ -214,3 +214,11 @@
   - add a separate KugelAudio-only connector implementation for easier testing: broader and contrary to the slice goal of preserving safe reuse
   - rely on end-to-end smokes alone: weaker signal when the reuse claim is specifically about low-level shared components
 - Affected area: `prd.md` Slice 3 / "Existing diffusion/decoder/connector code is reused where behavior remains valid.".
+
+### KugelAudio parity-justification location
+- Context: the next Slice 3 item requires any remaining canonical divergences to be either corrected or explicitly justified, and the existing rationale was scattered across tests and project-memory notes.
+- Chosen default: add a dedicated repo doc (`docs/kugelaudio-parity.md`) plus short source comments at the reused solver/connector/decoder sites, so future agents can find both the justification and the exact canonical reference quickly.
+- Rejected alternatives:
+  - keep the justifications only in `project-memory.md`: useful during execution, but too easy to miss as long-term repo documentation
+  - spread the rationale across many inline comments only: discoverable while reading code, but harder to audit as a parity checklist
+- Affected area: `prd.md` Slice 3 / "Any divergence from canonical behavior is either corrected or explicitly justified.".

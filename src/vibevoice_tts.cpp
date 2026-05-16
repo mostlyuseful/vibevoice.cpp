@@ -629,6 +629,11 @@ bool run_qwen2_stack(struct ggml_context* /*ctx_ext*/,
 
 // SpeechConnector: y = fc2(rmsnorm_last_dim(fc1(x)))
 // `x` is [latent, B], output is [hidden, B].
+// KugelAudio parity note: this helper is intentionally reused for the
+// generated-latent path because the canonical implementation feeds generated
+// speech latents through the acoustic connector only (no semantic re-encode)
+// before the next LM step; see
+// ../kugelaudio-open/src/kugelaudio_open/models/kugelaudio_inference.py.
 std::vector<float> run_speech_connector(const VibeVoiceConfig&  cfg,
                                         const VibeVoiceWeights& w,
                                         const float*            x,
@@ -735,6 +740,10 @@ void add_input_type_embedding(const VibeVoiceConfig& cfg,
 // full latent trajectory to produce coherent audio. Decoding frame-by-frame
 // independently zeros out the receptive field across frames and yields
 // "lyric"-style noise instead of intelligible speech.
+// KugelAudio parity note: this matches the canonical non-streaming final
+// decode, which stores latent chunks and decodes once at the end so the
+// decoder tail is preserved; see
+// ../kugelaudio-open/src/kugelaudio_open/models/kugelaudio_inference.py.
 //
 // `scaled_latents` has shape [vae_dim * n_frames] in row-major (latent
 // fastest), matching what `ggml_new_tensor_3d(ctx, F32, n_frames, vae_dim, 1)`
@@ -1672,6 +1681,9 @@ int tts_15b_generate(VibeVoiceModel*            model,
 
     // ---- 7. speech-generation loop ----
     DPMSolverConfig solver_cfg;
+    // KugelAudio parity note: reuse the existing ggml DPM-Solver++ path with
+    // the same canonical scheduler shape (1000 train steps, order-2,
+    // lower_order_final) as kugelaudio_open.models.kugelaudio_inference.
     solver_cfg.num_train_timesteps = 1000;
     solver_cfg.num_inference_steps = p.n_diffusion_steps > 0 ? p.n_diffusion_steps : 20;
     solver_cfg.solver_order        = 2;
