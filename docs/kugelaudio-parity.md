@@ -88,10 +88,45 @@ tracked parity debt, not accidental behavior.
 - Follow-up:
   - revisit once the generation interface has a cleaner token-budget notion
 
+## Determinism status for regression use
+
+### Deterministic configuration we currently promise
+For the supported v1 KugelAudio path, the regression target is:
+- `VIBEVOICE_BACKEND=cpu`
+- fixed model + tokenizer + reference WAV + text
+- fixed generation settings
+- explicit non-zero seed
+
+This is the configuration exercised by:
+- `tests/test_kugelaudio_determinism.cpp`
+- `tests/test_kugelaudio_cli_seed.cpp`
+
+### Known non-guaranteed / potentially nondeterministic cases
+These are not current regression promises and should be treated as such:
+
+- **Omitted seed (`seed = 0` / no `--seed`)**
+  - the runtime falls back to `std::random_device()` seeding
+  - result: different runs are expected to diverge
+
+- **Backend auto-selection or non-CPU backends**
+  - backend selection is process-wide and lazy; without `VIBEVOICE_BACKEND=cpu`, the runtime may pick a GPU-class backend first
+  - even with the same seed, cross-backend equality is not currently a regression guarantee
+
+- **GPU / accelerator execution details**
+  - CUDA / Metal / Vulkan / hipBLAS execution may differ from CPU due to backend-specific kernels, scheduling, and transfer/fallback behavior
+  - these paths are correctness targets, not current determinism targets
+
+- **Changing low-level execution knobs between runs**
+  - changing backend choice, flash-attention enablement, build flags, quantization, or model artifact naturally falls outside the deterministic regression contract
+
+In short: for acceptance/regression comparisons today, force CPU first and keep the full input + settings tuple pinned.
+
 ## Targeted tests tied to these notes
 - `tests/test_kugelaudio_generation_tokens.cpp`
 - `tests/test_kugelaudio_reused_components.cpp`
 - `tests/test_kugelaudio_reuse_coverage.cpp`
+- `tests/test_kugelaudio_determinism.cpp`
+- `tests/test_kugelaudio_cli_seed.cpp`
 - `tests/test_dpm_solver.cpp`
 - `tests/test_acoustic.cpp`
 - `tests/test_kugelaudio_decode_smoke.cpp`

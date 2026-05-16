@@ -270,3 +270,11 @@
   - wait for the future eval harness before testing seed plumbing: too late for the current PRD item
   - test only parser/default handling without generating audio: weaker than an end-to-end CLI proof
 - Affected area: `prd.md` Slice 3 / "Seed plumbing is exposed end-to-end through the CLI/eval path.".
+
+### KugelAudio determinism documentation boundary
+- Context: the next PRD item asks for documentation of known nondeterministic cases, but the code now has both a supported deterministic CPU regression path and broader backend/seed modes that are not regression targets.
+- Chosen default: document the deterministic contract and the remaining non-guaranteed cases together in `docs/kugelaudio-parity.md`, rather than scattering caveats across tests only.
+- Rejected alternatives:
+  - document only the negative cases: less useful because future evaluators also need to know what *is* promised deterministic
+  - add a separate determinism-only doc immediately: cleaner in isolation, but unnecessary overhead while the parity note already tracks Slice 3 behavior
+- Affected area: `prd.md` Slice 3 / "Known nondeterministic cases are documented if any remain.".
