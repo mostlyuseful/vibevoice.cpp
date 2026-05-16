@@ -86,6 +86,7 @@ def normalize_config(cfg: dict[str, Any], config_path: Path) -> dict[str, Any]:
         "ggml_cli": resolve_path(base, str(require(cfg, "ggml_cli"))),
         "ggml_model": resolve_path(base, str(require(cfg, "ggml_model"))),
         "ggml_tokenizer": resolve_path(base, str(require(cfg, "ggml_tokenizer"))),
+        "ggml_model_q8_0": resolve_path(base, str(cfg.get("ggml_model_q8_0", ""))),
         "asr_model": resolve_path(base, str(cfg.get("asr_model", ""))),
         "asr_tokenizer": resolve_path(base, str(cfg.get("asr_tokenizer", ""))),
         "reference_audio": resolve_path(base, str(require(cfg, "reference_audio"))),

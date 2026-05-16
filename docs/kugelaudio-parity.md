@@ -165,6 +165,11 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
   - ASR side runs `vibevoice-cli asr ...` (reuses the repo's ASR model) on both WAVs
 - Acceptance metric: word-level recall against the source text
   - ggml recall must be >= 95% of canonical recall, with absolute floor 0.80
+- q8_0 execution path: `VIBEVOICE_KUGELAUDIO_Q8_MODEL` env var points to a q8_0 quantized model
+  - Same generation parameters and reference fixture
+  - Validated by `tests/test_kugelaudio_q8_0_smoke.cpp` (non-empty, finite, non-silent output)
+- Failure diagnostics: the harness produces separate `.log` files for every step (TTS and ASR for both canonical and ggml), plus `results.json` with structured status, return codes, SHA256s, transcripts, and recall values. When the threshold fails, `threshold_check.message` states exactly which boundary was crossed (ratio or floor).
+- Quantization: use `scripts/quantize_gguf.py --src f16.gguf --out q8_0.gguf --type q8_0` to produce the q8_0 artifact from a converted f16 model
 - `tests/test_kugelaudio_generation_tokens.cpp`
 - `tests/test_kugelaudio_reused_components.cpp`
 - `tests/test_kugelaudio_reuse_coverage.cpp`

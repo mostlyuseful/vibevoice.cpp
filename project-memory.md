@@ -336,3 +336,11 @@
   - bump schema_version to 2 for additive fields: unnecessary churn; the schema is still the same conceptual contract with more optional fields
   - store ASR results in a separate file: harder to correlate with TTS results during regression comparisons
 - Affected area: `prd.md` Slice 4 / "Results are logged in a form suitable for regression checks.".
+
+### KugelAudio q8_0 acceptance path shape
+- Context: the next Slice 4 item requires q8_0 to complete conversion, load, and end-to-end generation on the same acceptance path, but real q8_0 artifacts may not be available during routine validation.
+- Chosen default: add a real-model gated C++ smoke test (`tests/test_kugelaudio_q8_0_smoke.cpp`) that loads a q8_0 model via `VIBEVOICE_KUGELAUDIO_Q8_MODEL`, generates with the same acceptance fixture/parameters, and asserts non-empty/finite/non-silent output. Also add `ggml_model_q8_0` to the eval config so the divergence harness has a slot for the q8_0 artifact.
+- Rejected alternatives:
+  - require q8_0 conversion in every test run: too heavy for routine local validation
+  - skip q8_0 entirely and only test f16: would leave a gap in the acceptance surface
+- Affected area: `prd.md` Slice 4 / "`q8_0` must complete conversion, load, and end-to-end generation on the same path.".

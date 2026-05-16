@@ -238,8 +238,8 @@ Use the repo's ASR path to measure recall and enforce the v1 thresholds.
 AC:
 - [x] Closed-loop ASR regression is automated for the acceptance path.
 - [x] `f16` must reach at least 95% of canonical recall with a floor of 0.80.
-- [ ] `q8_0` must complete conversion, load, and end-to-end generation on the same path.
-- [ ] Failures surface enough context to distinguish model drift from harness issues.
+- [x] `q8_0` must complete conversion, load, and end-to-end generation on the same path.
+- [x] Failures surface enough context to distinguish model drift from harness issues.
 
 Testing:
 - Unit: metric calculation helpers if introduced.

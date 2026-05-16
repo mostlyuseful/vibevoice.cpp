@@ -53,6 +53,8 @@ def main() -> int:
 
     if not cfg.get("asr_model") or not cfg.get("asr_tokenizer"):
         raise SystemExit("FAIL: eval config missing asr_model or asr_tokenizer")
+    if not cfg.get("ggml_model_q8_0"):
+        raise SystemExit("FAIL: eval config missing ggml_model_q8_0 (q8_0 acceptance path)")
 
     # Validate the harness can resolve this config in plan mode
     script = repo / "scripts" / "eval_kugelaudio_divergence.py"

@@ -45,6 +45,7 @@ vv_add_test(test_kugelaudio_generation_tokens)
 vv_add_test(test_kugelaudio_reused_components)
 vv_add_test(test_kugelaudio_reuse_coverage)
 vv_add_test(test_kugelaudio_decode_smoke)
+vv_add_test(test_kugelaudio_q8_0_smoke)
 vv_add_test(test_e2e_tts)
 vv_add_test(test_e2e_asr)
 # Closed-loop TTS→ASR roundtrip. Requires both model gguf files (~16 GB),
@@ -74,5 +75,6 @@ set_tests_properties(test_tokenizer test_rope test_qwen2_block test_qwen2_reside
                      test_kugelaudio_generation_tokens
                      test_kugelaudio_reused_components
                      test_kugelaudio_reuse_coverage test_kugelaudio_decode_smoke
+                     test_kugelaudio_q8_0_smoke
                      test_e2e_tts test_e2e_asr
                      PROPERTIES SKIP_RETURN_CODE 77)
