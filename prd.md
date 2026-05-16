@@ -13,7 +13,7 @@ Specify the metadata and tensor naming contract for `kugelaudio/kugelaudio-0-ope
 AC:
 - [x] The converter accepts `kugelaudio/kugelaudio-0-open` inputs and emits a GGUF with an explicit KugelAudio metadata contract.
 - [x] Unsupported checkpoints fail clearly during conversion.
-- [ ] The runtime loader accepts the converted KugelAudio GGUF and surfaces clear errors for missing or incompatible metadata.
+- [x] The runtime loader accepts the converted KugelAudio GGUF and surfaces clear errors for missing or incompatible metadata.
 - [ ] The schema is documented well enough that a future agent can add validation without re-deriving intent.
 
 Testing:
@@ -54,7 +54,7 @@ Testing:
 Teach `model_loader` / `vibevoice_tts` load paths to recognize the new KugelAudio contract cleanly, including migration compatibility if both legacy and new keys are temporarily supported.
 
 AC:
-- [ ] Loader recognizes the supported KugelAudio checkpoint and populates the TTS model state correctly.
+- [x] Loader recognizes the supported KugelAudio checkpoint and populates the TTS model state correctly.
 - [ ] Missing semantic/acoustic submodules fail clearly.
 - [ ] Loader behavior is deterministic and does not depend on implicit old VibeVoice defaults.
 

@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
+#include <limits>
 #include <random>
 #include <regex>
 #include <string>
@@ -23,6 +25,40 @@ namespace vv {
 // ============================================================================
 
 namespace {
+
+int get_meta_i32_any(const ModelLoader& m,
+                     std::initializer_list<const char*> keys,
+                     int def = 0) {
+    for (const char* key : keys) {
+        if (m.get_i64(key, INT64_MIN) != INT64_MIN) return m.get_i32(key, def);
+    }
+    return def;
+}
+
+float get_meta_f32_any(const ModelLoader& m,
+                       std::initializer_list<const char*> keys,
+                       float def = 0.0f) {
+    for (const char* key : keys) {
+        if (m.get_f32(key, std::numeric_limits<float>::quiet_NaN()) ==
+            m.get_f32(key, std::numeric_limits<float>::quiet_NaN())) {
+            return m.get_f32(key, def);
+        }
+    }
+    return def;
+}
+
+std::vector<int32_t> get_meta_i32_array_any(const ModelLoader& m,
+                                            std::initializer_list<const char*> keys) {
+    for (const char* key : keys) {
+        auto values = m.get_i32_array(key);
+        if (!values.empty()) return values;
+    }
+    return {};
+}
+
+bool has_meta_i32(const ModelLoader& m, const char* key) {
+    return m.get_i64(key, INT64_MIN) != INT64_MIN;
+}
 
 bool load_qwen2_layer(const ModelLoader& m, const std::string& prefix,
                       Qwen2LayerWeights* out) {
@@ -68,33 +104,58 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
     // (large 2-D tensors) stay f16.
     m.promote_small_f16_to_f32();
 
-    out->variant = m.get_str("vibevoice.variant", "realtime-0.5b");
+    const bool is_kugelaudio = !m.get_str("kugelaudio.architecture", {}).empty() ||
+                               m.get_i32("kugelaudio.schema_version", 0) != 0;
+    if (is_kugelaudio) {
+        const int schema = m.get_i32("kugelaudio.schema_version", 0);
+        if (schema != 1) {
+            VV_LOG_ERROR("vibevoice_load: unsupported kugelaudio.schema_version=%d (want 1)", schema);
+            return false;
+        }
+        const std::string checkpoint = m.get_str("kugelaudio.checkpoint", {});
+        if (checkpoint != "kugelaudio-0-open") {
+            VV_LOG_ERROR("vibevoice_load: unsupported kugelaudio.checkpoint=%s (want kugelaudio-0-open)",
+                         checkpoint.empty() ? "<missing>" : checkpoint.c_str());
+            return false;
+        }
+    }
+
+    out->variant = m.get_str("vibevoice.variant", "");
+    if (out->variant.empty()) {
+        const std::string checkpoint = m.get_str("kugelaudio.checkpoint", "");
+        if (checkpoint == "kugelaudio-0-open") out->variant = "1.5b";
+    }
+    if (out->variant == "kugelaudio-0-open") out->variant = "1.5b";
+    if (out->variant.empty()) out->variant = "realtime-0.5b";
     const bool is_asr      = (out->variant == "asr-7b");
     const bool is_realtime = (out->variant == "realtime-0.5b");
     const bool is_15b      = (out->variant == "1.5b");
 
     auto& c = out->cfg;
-    c.hidden       = m.get_i32 ("vibevoice.hidden");
-    c.n_layers_lm  = m.get_i32 ("vibevoice.n_layers_lm");
-    c.n_layers_tlm = m.get_i32 ("vibevoice.n_layers_tlm");
-    c.n_heads      = m.get_i32 ("vibevoice.n_heads");
-    c.n_kv_heads   = m.get_i32 ("vibevoice.n_kv_heads");
-    c.head_dim     = m.get_i32 ("vibevoice.head_dim");
-    c.vocab_size   = m.get_i32 ("vibevoice.vocab_size");
-    c.rope_theta   = m.get_f32 ("vibevoice.rope_theta",   1.0e6f);
-    c.rms_norm_eps = m.get_f32 ("vibevoice.rms_norm_eps", 1.0e-6f);
-    c.latent       = m.get_i32 ("vibevoice.diffusion.latent",      64);
-    c.head_layers  = m.get_i32 ("vibevoice.diffusion.head_layers",  4);
-    c.ffn_ratio    = m.get_f32 ("vibevoice.diffusion.ffn_ratio",  3.0f);
-    c.vae_dim      = m.get_i32 ("vibevoice.acoustic.vae_dim",      64);
-    c.sample_rate  = m.get_i32 ("vibevoice.sample_rate",        24000);
+    c.hidden       = get_meta_i32_any(m, {"vibevoice.hidden", "kugelaudio.decoder.hidden_size"});
+    c.n_layers_lm  = get_meta_i32_any(m, {"vibevoice.n_layers_lm", "kugelaudio.decoder.num_hidden_layers"});
+    c.n_layers_tlm = get_meta_i32_any(m, {"vibevoice.n_layers_tlm", "kugelaudio.decoder.tts_hidden_layers"});
+    if (is_kugelaudio && !has_meta_i32(m, "vibevoice.n_layers_lm") && c.n_layers_lm > 0) {
+        c.n_layers_lm -= c.n_layers_tlm;
+    }
+    c.n_heads      = get_meta_i32_any(m, {"vibevoice.n_heads", "kugelaudio.decoder.num_attention_heads"});
+    c.n_kv_heads   = get_meta_i32_any(m, {"vibevoice.n_kv_heads", "kugelaudio.decoder.num_key_value_heads"});
+    c.head_dim     = get_meta_i32_any(m, {"vibevoice.head_dim", "kugelaudio.decoder.head_dim"});
+    c.vocab_size   = get_meta_i32_any(m, {"vibevoice.vocab_size", "kugelaudio.decoder.vocab_size"});
+    c.rope_theta   = get_meta_f32_any(m, {"vibevoice.rope_theta", "kugelaudio.decoder.rope_theta"}, 1.0e6f);
+    c.rms_norm_eps = get_meta_f32_any(m, {"vibevoice.rms_norm_eps", "kugelaudio.decoder.rms_norm_eps"}, 1.0e-6f);
+    c.latent       = get_meta_i32_any(m, {"vibevoice.diffusion.latent", "kugelaudio.diffusion.latent_size"}, 64);
+    c.head_layers  = get_meta_i32_any(m, {"vibevoice.diffusion.head_layers", "kugelaudio.diffusion.head_layers"}, 4);
+    c.ffn_ratio    = get_meta_f32_any(m, {"vibevoice.diffusion.ffn_ratio", "kugelaudio.diffusion.ffn_ratio"}, 3.0f);
+    c.vae_dim      = get_meta_i32_any(m, {"vibevoice.acoustic.vae_dim", "kugelaudio.acoustic.vae_dim"}, 64);
+    c.sample_rate  = get_meta_i32_any(m, {"vibevoice.sample_rate", "kugelaudio.sample_rate"}, 24000);
 
     // Acoustic decoder config (we only use the decoder side here)
     c.acoustic.channels   = 1;
     c.acoustic.vae_dim    = c.vae_dim;
-    c.acoustic.eps        = m.get_f32("vibevoice.acoustic.eps", 1e-5f);
-    auto ratios = m.get_i32_array("vibevoice.acoustic.encoder_ratios");
-    auto depths = m.get_i32_array("vibevoice.acoustic.decoder_depths");
+    c.acoustic.eps        = get_meta_f32_any(m, {"vibevoice.acoustic.eps", "kugelaudio.acoustic.eps"}, 1e-5f);
+    auto ratios = get_meta_i32_array_any(m, {"vibevoice.acoustic.encoder_ratios", "kugelaudio.acoustic.encoder_ratios"});
+    auto depths = get_meta_i32_array_any(m, {"vibevoice.acoustic.decoder_depths", "kugelaudio.acoustic.decoder_depths"});
     if (ratios.empty() || depths.empty()) {
         VV_LOG_ERROR("vibevoice_load: acoustic ratios/depths missing");
         return false;
@@ -187,7 +248,7 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
         // Encoder depths are forward order (3,3,3,3,3,3,8) — different from
         // the (reversed) decoder depths the TTS path uses.
         AcousticConfig enc_cfg = c.acoustic;
-        auto enc_depths = m.get_i32_array("vibevoice.acoustic.encoder_depths");
+        auto enc_depths = get_meta_i32_array_any(m, {"vibevoice.acoustic.encoder_depths", "kugelaudio.acoustic.encoder_depths"});
         if (!enc_depths.empty()) enc_cfg.depths.assign(enc_depths.begin(), enc_depths.end());
 
         if (!load_encoder(m, "at.enc", enc_cfg, &out->at_enc)) {
@@ -198,12 +259,12 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
         // right depths when running encoder_forward.
         c.acoustic = enc_cfg;
         // Semantic config (separate ratios/depths possible, but in practice same)
-        out->semantic_vae_dim = m.get_i32("vibevoice.semantic.vae_dim", 128);
+        out->semantic_vae_dim = get_meta_i32_any(m, {"vibevoice.semantic.vae_dim", "kugelaudio.semantic.vae_dim"}, 128);
         out->semantic_cfg.channels = 1;
         out->semantic_cfg.vae_dim  = out->semantic_vae_dim;
-        out->semantic_cfg.eps      = m.get_f32("vibevoice.acoustic.eps", 1e-5f);
-        auto sm_ratios = m.get_i32_array("vibevoice.semantic.encoder_ratios");
-        auto sm_depths = m.get_i32_array("vibevoice.semantic.encoder_depths");
+        out->semantic_cfg.eps      = get_meta_f32_any(m, {"vibevoice.acoustic.eps", "kugelaudio.acoustic.eps"}, 1e-5f);
+        auto sm_ratios = get_meta_i32_array_any(m, {"vibevoice.semantic.encoder_ratios", "kugelaudio.semantic.encoder_ratios"});
+        auto sm_depths = get_meta_i32_array_any(m, {"vibevoice.semantic.encoder_depths", "kugelaudio.semantic.encoder_depths"});
         if (sm_ratios.empty()) sm_ratios = ratios;
         if (sm_depths.empty()) sm_depths.assign(c.acoustic.depths.begin(), c.acoustic.depths.end());
         out->semantic_cfg.ratios.assign(sm_ratios.begin(), sm_ratios.end());
