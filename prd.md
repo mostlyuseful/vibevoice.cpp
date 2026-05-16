@@ -11,8 +11,8 @@ Deliver a converted GGUF that the runtime can recognize, load, and reject clearl
 Specify the metadata and tensor naming contract for `kugelaudio/kugelaudio-0-open`, then implement it in `scripts/convert_vibevoice_to_gguf.py` and the runtime loader. Allow migration compatibility with legacy `vibevoice.*` keys if it keeps the diff small, but make the intended KugelAudio schema explicit and tested.
 
 AC:
-- [ ] The converter accepts `kugelaudio/kugelaudio-0-open` inputs and emits a GGUF with an explicit KugelAudio metadata contract.
-- [ ] Unsupported checkpoints fail clearly during conversion.
+- [x] The converter accepts `kugelaudio/kugelaudio-0-open` inputs and emits a GGUF with an explicit KugelAudio metadata contract.
+- [x] Unsupported checkpoints fail clearly during conversion.
 - [ ] The runtime loader accepts the converted KugelAudio GGUF and surfaces clear errors for missing or incompatible metadata.
 - [ ] The schema is documented well enough that a future agent can add validation without re-deriving intent.
 
@@ -26,9 +26,9 @@ Testing:
 The current converter is VibeVoice-biased. Replace or narrow its heuristics so `kugelaudio/kugelaudio-0-open` is identified correctly from canonical config/tensor structure rather than accidentally classified as a VibeVoice flavor.
 
 AC:
-- [ ] Detection logic correctly identifies the supported KugelAudio checkpoint.
-- [ ] Detection no longer relies on heuristics known to misclassify KugelAudio.
-- [ ] Failure messages explain why a checkpoint is unsupported.
+- [x] Detection logic correctly identifies the supported KugelAudio checkpoint.
+- [x] Detection no longer relies on heuristics known to misclassify KugelAudio.
+- [x] Failure messages explain why a checkpoint is unsupported.
 
 Testing:
 - Unit: config-shape fixtures and tensor-presence tests.

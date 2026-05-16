@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Convert a VibeVoice safetensors checkpoint to a single .gguf for vibevoice.cpp.
+"""Convert a VibeVoice or KugelAudio safetensors checkpoint to a single .gguf.
 
-Currently supports `microsoft/VibeVoice-Realtime-0.5B` (the streaming TTS
-variant — single safetensors, hidden=896, 24-layer Qwen2 split into 4 lower
-+ 20 upper, acoustic decoder only, diffusion head). The 1.5B podcast variant
-will be added later.
+KugelAudio v1 support is intentionally narrow: the converter accepts only the
+published `kugelaudio/kugelaudio-0-open` checkpoint shape and emits an explicit
+`kugelaudio.*` metadata contract alongside legacy `vibevoice.*` keys needed by
+existing runtime code during migration.
 
 Output gguf carries:
-  metadata: vibevoice.variant, .hidden, .n_layers_lm, .n_layers_tlm,
-            .n_heads, .n_kv_heads, .head_dim, .vocab_size, .rope_theta,
-            .rms_norm_eps, .acoustic.vae_dim, .acoustic.ratios,
-            .acoustic.depths_dec, .diffusion.head_layers,
-            .diffusion.ffn_ratio, .diffusion.latent, .speech.scaling, .speech.bias
+  metadata: kugelaudio.schema_version, .checkpoint, .decoder.*, .acoustic.*,
+            .semantic.*, .diffusion.*, .sample_rate, plus legacy
+            vibevoice.* compatibility keys
   tensors:  remapped per the table at the bottom of this file
 """
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 import sys
@@ -24,13 +23,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
-
-try:
-    import gguf
-    from safetensors import safe_open
-except ImportError as e:
-    sys.stderr.write(f"error: pip install gguf safetensors\n  {e}\n")
-    sys.exit(1)
 
 
 # ---------- key rewrite table ----------
@@ -216,55 +208,180 @@ def remap(name: str) -> str | None:
     return None
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--src",   required=True, help="model dir with config.json + model.safetensors")
-    ap.add_argument("--out",   required=True)
-    ap.add_argument("--strict", action="store_true",
-                    help="fail on any unmapped source key")
-    # fp32 is the default for now: ggml's CPU path doesn't auto-cast in
-    # element-wise ops, so a uniform fp32 tensor set keeps the pipeline
-    # robust. fp16 doubles the on-disk savings but will crash on first
-    # element-wise mul in the orchestrator until the loader pre-casts
-    # norm/bias tensors.
-    ap.add_argument("--dtype", choices=["fp16", "fp32"], default="fp32")
-    args = ap.parse_args()
+SUPPORTED_KUGELAUDIO_SIGNATURE = {
+    "decoder_hidden_size": 3584,
+    "decoder_num_hidden_layers": 28,
+    "decoder_num_attention_heads": 28,
+    "decoder_num_key_value_heads": 4,
+    "decoder_vocab_size": 152064,
+    "tts_backbone_num_hidden_layers": 20,
+    "acoustic_vae_dim": 64,
+    "diffusion_latent_size": 64,
+}
 
-    src = Path(args.src)
-    cfg = json.load(open(src / "config.json"))
 
-    # ------- collect tensors -------
+def _import_runtime_deps() -> tuple[Any, Callable[..., Any]]:
+    try:
+        gguf = importlib.import_module("gguf")
+        safe_mod = importlib.import_module("safetensors")
+        return gguf, safe_mod.safe_open
+    except ImportError as e:
+        sys.stderr.write(f"error: use uv to provide gguf and safetensors\n  {e}\n")
+        sys.exit(1)
+
+
+def _split_depths(value: Any) -> list[int]:
+    if isinstance(value, str):
+        return [int(x) for x in value.split("-")]
+    return list(value)
+
+
+def _to_dtype(arr: np.ndarray, dtype: str) -> np.ndarray:
+    has_np_bfloat16 = hasattr(np, "bfloat16")
+    if has_np_bfloat16 and arr.dtype == np.dtype("bfloat16"):
+        arr = arr.astype(np.float32)
+    elif str(arr.dtype) in ("torch.bfloat16", "bfloat16"):
+        arr = arr.astype(np.float32)
+    if arr.dtype != np.float32 and arr.dtype != np.float16:
+        arr = arr.astype(np.float32)
+    if dtype == "fp16" and arr.dtype == np.float32 and arr.size > 1:
+        arr = arr.astype(np.float16)
+    return np.ascontiguousarray(arr)
+
+
+def _tensor_to_numpy(t: Any, dtype: str) -> np.ndarray:
+    has_np_bfloat16 = hasattr(np, "bfloat16")
+    if has_np_bfloat16 and getattr(t, "dtype", None) == np.dtype("bfloat16"):
+        t = t.float()
+    arr = t.cpu().numpy() if hasattr(t, "cpu") else np.asarray(t)
+    return _to_dtype(np.asarray(arr), dtype)
+
+
+def detect_variant(cfg: dict[str, Any], remapped_tensor_names: list[str]) -> str:
+    if cfg.get("model_type") == "kugelaudio":
+        dec = cfg.get("decoder_config") or {}
+        dh = cfg.get("diffusion_head_config") or {}
+        signature = {
+            "decoder_hidden_size": dec.get("hidden_size"),
+            "decoder_num_hidden_layers": dec.get("num_hidden_layers"),
+            "decoder_num_attention_heads": dec.get("num_attention_heads"),
+            "decoder_num_key_value_heads": dec.get("num_key_value_heads"),
+            "decoder_vocab_size": dec.get("vocab_size"),
+            "tts_backbone_num_hidden_layers": cfg.get("tts_backbone_num_hidden_layers"),
+            "acoustic_vae_dim": cfg.get("acoustic_vae_dim"),
+            "diffusion_latent_size": dh.get("latent_size"),
+        }
+        if signature == SUPPORTED_KUGELAUDIO_SIGNATURE:
+            return "kugelaudio-0-open"
+        raise ValueError(
+            "unsupported KugelAudio checkpoint: only kugelaudio/kugelaudio-0-open "
+            f"is supported in v1 (got signature={signature})"
+        )
+
+    archs = cfg.get("architectures") or []
+    arch = archs[0] if archs else ""
+    has_lm_head = any(k.startswith("lm_head") for k in remapped_tensor_names)
+    has_prediction_hd = any(k.startswith("dh.") for k in remapped_tensor_names)
+    has_at_decoder = any(k.startswith("at.dec.") for k in remapped_tensor_names)
+    if "Streaming" in arch or cfg.get("tts_backbone_num_hidden_layers"):
+        return "realtime-0.5b"
+    if "ASR" in arch:
+        return "asr-7b"
+    if has_prediction_hd and has_at_decoder:
+        return "1.5b"
+    if has_lm_head:
+        return "asr-7b"
+    return cfg.get("model_type", "vibevoice")
+
+
+def add_metadata(writer: Any, cfg: dict[str, Any], variant: str) -> None:
+    dec = cfg["decoder_config"]
+    ac = cfg["acoustic_tokenizer_config"]
+    sm = cfg.get("semantic_tokenizer_config") or {}
+    dh = cfg.get("diffusion_head_config") or {}
+
+    n_total = dec["num_hidden_layers"]
+    n_tts_layers = cfg.get("tts_backbone_num_hidden_layers", 0) or 0
+    n_lm_layers = n_total - n_tts_layers if n_tts_layers > 0 else n_total
+    head_dim = dec["hidden_size"] // dec["num_attention_heads"]
+    enc_depths = _split_depths(ac["encoder_depths"])
+    dec_depths = ac.get("decoder_depths") or list(reversed(enc_depths))
+    dec_depths = _split_depths(dec_depths)
+
+    writer.add_uint32("kugelaudio.schema_version", 1)
+    writer.add_string("kugelaudio.architecture", "kugelaudio")
+    writer.add_string("kugelaudio.checkpoint", variant)
+    writer.add_uint32("kugelaudio.decoder.hidden_size", dec["hidden_size"])
+    writer.add_uint32("kugelaudio.decoder.num_hidden_layers", n_total)
+    writer.add_uint32("kugelaudio.decoder.tts_hidden_layers", n_tts_layers)
+    writer.add_uint32("kugelaudio.decoder.num_attention_heads", dec["num_attention_heads"])
+    writer.add_uint32("kugelaudio.decoder.num_key_value_heads", dec["num_key_value_heads"])
+    writer.add_uint32("kugelaudio.decoder.head_dim", head_dim)
+    writer.add_uint32("kugelaudio.decoder.vocab_size", dec["vocab_size"])
+    writer.add_float32("kugelaudio.decoder.rope_theta", float(dec["rope_theta"]))
+    writer.add_float32("kugelaudio.decoder.rms_norm_eps", float(dec["rms_norm_eps"]))
+    writer.add_uint32("kugelaudio.acoustic.vae_dim", ac["vae_dim"])
+    writer.add_array("kugelaudio.acoustic.encoder_ratios", list(ac["encoder_ratios"]))
+    writer.add_array("kugelaudio.acoustic.encoder_depths", enc_depths)
+    writer.add_array("kugelaudio.acoustic.decoder_depths", dec_depths)
+    if sm:
+        writer.add_uint32("kugelaudio.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 128)))
+        writer.add_array("kugelaudio.semantic.encoder_ratios", list(sm["encoder_ratios"]))
+        writer.add_array("kugelaudio.semantic.encoder_depths", _split_depths(sm["encoder_depths"]))
+    if dh:
+        writer.add_uint32("kugelaudio.diffusion.head_layers", dh.get("head_layers", 4))
+        writer.add_float32("kugelaudio.diffusion.ffn_ratio", float(dh.get("head_ffn_ratio", 3.0)))
+        writer.add_uint32("kugelaudio.diffusion.latent_size", dh.get("latent_size", 64))
+    writer.add_uint32("kugelaudio.sample_rate", 24000)
+
+    writer.add_string("vibevoice.variant", variant)
+    writer.add_uint32("vibevoice.hidden", dec["hidden_size"])
+    writer.add_uint32("vibevoice.n_layers_lm", n_lm_layers)
+    writer.add_uint32("vibevoice.n_layers_tlm", n_tts_layers)
+    writer.add_uint32("vibevoice.n_heads", dec["num_attention_heads"])
+    writer.add_uint32("vibevoice.n_kv_heads", dec["num_key_value_heads"])
+    writer.add_uint32("vibevoice.head_dim", head_dim)
+    writer.add_uint32("vibevoice.vocab_size", dec["vocab_size"])
+    writer.add_float32("vibevoice.rope_theta", float(dec["rope_theta"]))
+    writer.add_float32("vibevoice.rms_norm_eps", float(dec["rms_norm_eps"]))
+    writer.add_uint32("vibevoice.acoustic.vae_dim", ac["vae_dim"])
+    writer.add_array("vibevoice.acoustic.encoder_ratios", list(ac["encoder_ratios"]))
+    writer.add_array("vibevoice.acoustic.encoder_depths", enc_depths)
+    writer.add_array("vibevoice.acoustic.decoder_depths", dec_depths)
+    if sm:
+        writer.add_uint32("vibevoice.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 128)))
+        writer.add_array("vibevoice.semantic.encoder_ratios", list(sm["encoder_ratios"]))
+        writer.add_array("vibevoice.semantic.encoder_depths", _split_depths(sm["encoder_depths"]))
+    if dh:
+        writer.add_uint32("vibevoice.diffusion.head_layers", dh.get("head_layers", 4))
+        writer.add_float32("vibevoice.diffusion.ffn_ratio", float(dh.get("head_ffn_ratio", 3.0)))
+        writer.add_uint32("vibevoice.diffusion.latent", dh.get("latent_size", 64))
+    writer.add_uint32("vibevoice.sample_rate", 24000)
+
+
+def convert_checkpoint(
+    src: Path,
+    out: Path,
+    *,
+    strict: bool,
+    dtype: str,
+    gguf_module: Any,
+    safe_open_fn: Callable[..., Any],
+) -> int:
+    with open(src / "config.json", "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
     tensors: list[tuple[str, np.ndarray]] = []
     unmapped: list[str] = []
-
-    def to_dtype(arr: np.ndarray) -> np.ndarray:
-        # safetensors gives us the source dtype (often bf16). Convert to fp32
-        # first, then optionally cast to fp16 for storage.
-        if arr.dtype == np.dtype("bfloat16") if hasattr(np, "bfloat16") else False:
-            arr = arr.astype(np.float32)
-        elif str(arr.dtype) in ("torch.bfloat16", "bfloat16"):
-            arr = arr.astype(np.float32)
-        if arr.dtype != np.float32 and arr.dtype != np.float16:
-            arr = arr.astype(np.float32)
-        if args.dtype == "fp16" and arr.dtype == np.float32 and arr.size > 1:
-            arr = arr.astype(np.float16)
-        return np.ascontiguousarray(arr)
-
     files = sorted(src.glob("model*.safetensors"))
     if not files:
         sys.stderr.write(f"error: no model*.safetensors under {src}\n")
         return 1
 
     for f in files:
-        with safe_open(str(f), framework="pt") as fh:
+        with safe_open_fn(str(f), framework="pt") as fh:
             for k in fh.keys():
-                t = fh.get_tensor(k)
-                # bf16 → fp32
-                if t.dtype == np.dtype("bfloat16") if hasattr(np.dtype, "bfloat16") else False:
-                    t = t.float()
-                arr = t.cpu().to(__import__("torch").float32).numpy()
-                arr = to_dtype(arr)
-
+                arr = _tensor_to_numpy(fh.get_tensor(k), dtype)
                 new = remap(k)
                 if new is None:
                     unmapped.append(k)
@@ -275,105 +392,65 @@ def main() -> int:
         msg = (f"warning: {len(unmapped)} unmapped keys (first 10):\n"
                + "\n".join(f"  {k}" for k in unmapped[:10]))
         sys.stderr.write(msg + "\n")
-        if args.strict:
+        if strict:
             return 2
 
-    # ------- write gguf -------
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    w = gguf.GGUFWriter(str(out), arch="vibevoice")
+    tnames = [t[0] for t in tensors]
+    try:
+        variant = detect_variant(cfg, tnames)
+    except ValueError as e:
+        sys.stderr.write(f"error: {e}\n")
+        return 3
 
     dec = cfg["decoder_config"]
-    ac  = cfg["acoustic_tokenizer_config"]
-    sm  = cfg.get("semantic_tokenizer_config") or {}
-    dh  = cfg.get("diffusion_head_config") or {}
-
-    # Variant detection from architectures + tensor presence.
-    # ASR-7B and 1.5B share the `VibeVoice*ForConditionalGeneration` family
-    # but differ in what they ship: ASR has lm_head + no decoder/diffusion;
-    # 1.5B has decoder + prediction_head and ties lm_head to embed_tokens
-    # (so it does not appear as a separate key in safetensors).
-    archs = cfg.get("architectures") or []
-    arch  = archs[0] if archs else ""
-    tnames = [t[0] for t in tensors]
-    has_lm_head        = any(k.startswith("lm_head") for k in tnames)
-    has_prediction_hd  = any(k.startswith("dh.") for k in tnames)
-    has_at_decoder     = any(k.startswith("at.dec.") for k in tnames)
-    if "Streaming" in arch or cfg.get("tts_backbone_num_hidden_layers"):
-        variant = "realtime-0.5b"
-    elif "ASR" in arch:
-        variant = "asr-7b"
-    elif has_prediction_hd and has_at_decoder:
-        variant = "1.5b"
-    elif has_lm_head:
-        variant = "asr-7b"
-    else:
-        variant = cfg.get("model_type", "vibevoice")
-
-    # 1.5B ties lm_head to embed_tokens (cfg.decoder_config.tie_word_embeddings).
-    # The C++ loader expects an explicit `lm_head.weight` entry, so we materialise
-    # one by aliasing the token-embedding tensor.
-    if (variant == "1.5b"
+    if (
+        variant == "1.5b"
         and dec.get("tie_word_embeddings", False)
-        and not has_lm_head):
+        and not any(k.startswith("lm_head") for k in tnames)
+    ):
         embd = next((arr for n, arr in tensors if n == "lm.tok_embd.weight"), None)
         if embd is None:
-            sys.stderr.write("error: 1.5b variant missing lm.tok_embd.weight; "
-                             "cannot synthesise tied lm_head\n")
+            sys.stderr.write("error: 1.5b variant missing lm.tok_embd.weight; cannot synthesise tied lm_head\n")
             return 4
         tensors.append(("lm_head.weight", embd))
 
-    n_total      = dec["num_hidden_layers"]
-    n_tts_layers = cfg.get("tts_backbone_num_hidden_layers", 0) or 0
-    n_lm_layers  = n_total - n_tts_layers if n_tts_layers > 0 else n_total
-
-    w.add_string ("vibevoice.variant",       variant)
-    w.add_uint32 ("vibevoice.hidden",        dec["hidden_size"])
-    w.add_uint32 ("vibevoice.n_layers_lm",   n_lm_layers)
-    w.add_uint32 ("vibevoice.n_layers_tlm",  n_tts_layers)
-    w.add_uint32 ("vibevoice.n_heads",       dec["num_attention_heads"])
-    w.add_uint32 ("vibevoice.n_kv_heads",    dec["num_key_value_heads"])
-    head_dim = dec["hidden_size"] // dec["num_attention_heads"]
-    w.add_uint32 ("vibevoice.head_dim",      head_dim)
-    w.add_uint32 ("vibevoice.vocab_size",    dec["vocab_size"])
-    w.add_float32("vibevoice.rope_theta",    float(dec["rope_theta"]))
-    w.add_float32("vibevoice.rms_norm_eps",  float(dec["rms_norm_eps"]))
-    w.add_uint32 ("vibevoice.acoustic.vae_dim", ac["vae_dim"])
-    w.add_array  ("vibevoice.acoustic.encoder_ratios", list(ac["encoder_ratios"]))
-    enc_d = ac["encoder_depths"]
-    enc_d_list = [int(x) for x in enc_d.split("-")] if isinstance(enc_d, str) else list(enc_d)
-    w.add_array  ("vibevoice.acoustic.encoder_depths", enc_d_list)
-    dec_d = ac.get("decoder_depths") or list(reversed(enc_d_list))
-    if isinstance(dec_d, str):
-        dec_d = [int(x) for x in dec_d.split("-")]
-    w.add_array  ("vibevoice.acoustic.decoder_depths", list(dec_d))
-    if sm:
-        w.add_uint32 ("vibevoice.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 128)))
-        w.add_array  ("vibevoice.semantic.encoder_ratios", list(sm["encoder_ratios"]))
-        sem_d = sm["encoder_depths"]
-        sem_d_list = [int(x) for x in sem_d.split("-")] if isinstance(sem_d, str) else list(sem_d)
-        w.add_array  ("vibevoice.semantic.encoder_depths", sem_d_list)
-    if dh:
-        w.add_uint32 ("vibevoice.diffusion.head_layers", dh.get("head_layers", 4))
-        w.add_float32("vibevoice.diffusion.ffn_ratio",   float(dh.get("head_ffn_ratio", 3.0)))
-        w.add_uint32 ("vibevoice.diffusion.latent",      dh.get("latent_size", 64))
-    w.add_uint32 ("vibevoice.sample_rate",           24000)
-
-    # speech scaling factors (also written as tensors above; surface as floats too)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    writer = gguf_module.GGUFWriter(str(out), arch="vibevoice")
+    add_metadata(writer, cfg, variant)
     for n, arr in tensors:
-        w.add_tensor(n, arr)
+        writer.add_tensor(n, arr)
+    writer.write_header_to_file()
+    writer.write_kv_data_to_file()
+    writer.write_tensors_to_file()
+    writer.close()
 
-    w.write_header_to_file()
-    w.write_kv_data_to_file()
-    w.write_tensors_to_file()
-    w.close()
-
+    n_total = dec["num_hidden_layers"]
+    n_tts_layers = cfg.get("tts_backbone_num_hidden_layers", 0) or 0
     sys.stderr.write(
         f"wrote {out}: {len(tensors)} tensors  (unmapped={len(unmapped)})  "
-        f"hidden={dec['hidden_size']} lm_layers={n_lm_layers}+{n_tts_layers} "
+        f"variant={variant} hidden={dec['hidden_size']} lm_layers={n_total - n_tts_layers}+{n_tts_layers} "
         f"vocab={dec['vocab_size']}\n"
     )
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--src", required=True, help="model dir with config.json + model.safetensors")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--strict", action="store_true", help="fail on any unmapped source key")
+    ap.add_argument("--dtype", choices=["fp16", "fp32"], default="fp32")
+    args = ap.parse_args(argv)
+
+    gguf_module, safe_open_fn = _import_runtime_deps()
+    return convert_checkpoint(
+        Path(args.src),
+        Path(args.out),
+        strict=args.strict,
+        dtype=args.dtype,
+        gguf_module=gguf_module,
+        safe_open_fn=safe_open_fn,
+    )
 
 
 if __name__ == "__main__":
