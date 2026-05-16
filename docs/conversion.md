@@ -17,6 +17,18 @@ Current supported KugelAudio v1 scope:
 - quality target: `f16` recall >= 95% of canonical with 0.80 floor
 - execution target: `q8_0` runs end-to-end on the same path
 
+Canonical reference points for this converter/runtime contract:
+- checkpoint/config shape:
+  `../kugelaudio-open/src/kugelaudio_open/configs/kugelaudio_1.5b.json`
+  and `../kugelaudio-open/src/kugelaudio_open/configs/model_config.py`
+- prompt semantics:
+  `../kugelaudio-open/src/kugelaudio_open/processors/kugelaudio_processor.py`
+- inference/generation behavior:
+  `../kugelaudio-open/src/kugelaudio_open/models/kugelaudio_inference.py`
+  and `../kugelaudio-open/src/kugelaudio_open/utils/generation.py`
+- audio preprocessing:
+  `../kugelaudio-open/src/kugelaudio_open/processors/audio_processor.py`
+
 Legacy VibeVoice-only flows (for example `convert_voice_to_gguf.py`) remain
 in this doc for migration/reference purposes, but they are not part of the
 KugelAudio v1 acceptance path.

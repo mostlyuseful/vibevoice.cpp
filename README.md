@@ -61,6 +61,23 @@ Primary docs for this path:
 - `docs/kugelaudio-parity.md` — parity notes, acceptance fixture, eval/logging contract
 - `AGENTS.md` — maintainer workflow / acceptance path orientation
 
+### Canonical reference points into `../kugelaudio-open`
+When behavior is ambiguous, these are the first files to check in the canonical
+PyTorch implementation:
+- prompt formatting + section semantics:
+  `../kugelaudio-open/src/kugelaudio_open/processors/kugelaudio_processor.py`
+- inference loop behavior (CFG, speech tokens, stop behavior):
+  `../kugelaudio-open/src/kugelaudio_open/models/kugelaudio_inference.py`
+- generation helpers used by the canonical path:
+  `../kugelaudio-open/src/kugelaudio_open/utils/generation.py`
+- reference-audio preprocessing / normalization:
+  `../kugelaudio-open/src/kugelaudio_open/processors/audio_processor.py`
+- published config/model shape assumptions:
+  `../kugelaudio-open/src/kugelaudio_open/configs/kugelaudio_1.5b.json`
+  and `../kugelaudio-open/src/kugelaudio_open/configs/model_config.py`
+- CLI/reference workflow in the canonical repo:
+  `../kugelaudio-open/src/kugelaudio_open/cli.py`
+
 Everything below this heading is retained mostly for legacy VibeVoice migration
 or regression coverage unless explicitly marked otherwise.
 

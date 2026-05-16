@@ -434,3 +434,11 @@
   - rewrite the entire README around KugelAudio only: too destructive while legacy VibeVoice migration examples are still intentionally retained
   - rely only on AGENTS.md / maintainer docs: too hidden for developers arriving through the README/docs first
 - Affected area: `prd.md` Slice 5 / "Developer-facing docs reflect current v1 scope and acceptance criteria.".
+
+### KugelAudio canonical-reference doc anchors
+- Context: the next Slice 5 item requires repo-facing docs to name the canonical reference points in `../kugelaudio-open`, but those links were previously scattered or implicit.
+- Chosen default: add one explicit canonical-reference section to the README (developer-facing behavior/eval orientation) and one to `docs/conversion.md` (converter/runtime contract orientation), each naming the exact upstream files we use as ground truth.
+- Rejected alternatives:
+  - rely only on `AGENTS.md` / maintainer notes: too hidden for developers entering through README/docs
+  - scatter file references ad hoc across many sections: harder to audit and more likely to drift
+- Affected area: `prd.md` Slice 5 / "Canonical reference points into `../kugelaudio-open` are documented.".
