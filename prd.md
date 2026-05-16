@@ -176,7 +176,7 @@ Testing:
 Expose the supported v1 flow through the CLI only: model path, tokenizer, text, reference audio, output WAV, and relevant generation settings.
 
 AC:
-- [ ] CLI runs the supported single-speaker raw-reference path end-to-end.
+- [x] CLI runs the supported single-speaker raw-reference path end-to-end.
 - [ ] Unsupported flags/features are rejected clearly.
 - [ ] Generated output is written as a valid waveform file.
 

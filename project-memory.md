@@ -230,3 +230,11 @@
   - add another heavy end-to-end KugelAudio run for this item: broader and flakier than needed to prove reuse wiring
   - treat the existing optional-fixture tests as sufficient on their own: weaker because they do not directly guard the KugelAudio-specific solver setup point
 - Affected area: `prd.md` Slice 3 / "Reused code paths remain covered by targeted tests.".
+
+### KugelAudio CLI end-to-end validation scope
+- Context: the next Slice 3 CLI-demo item requires proving the supported single-speaker raw-reference path runs end-to-end through the CLI, but the lightweight synthetic fixture is only suitable for wiring checks and not for real generation.
+- Chosen default: validate this item with a real-model gated CLI smoke test that exercises `vibevoice-cli tts` on the supported KugelAudio path and then checks that the emitted WAV is loadable, non-empty, and non-silent.
+- Rejected alternatives:
+  - reuse the conditioning short-circuit test as proof of end-to-end CLI behavior: too weak because it stops before real generation and final decode
+  - require an always-on heavyweight model fixture in the repo: stronger, but outside the current repo/testing constraints
+- Affected area: `prd.md` Slice 3 / "CLI runs the supported single-speaker raw-reference path end-to-end.".
