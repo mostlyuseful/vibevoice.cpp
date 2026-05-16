@@ -222,3 +222,11 @@
   - keep the justifications only in `project-memory.md`: useful during execution, but too easy to miss as long-term repo documentation
   - spread the rationale across many inline comments only: discoverable while reading code, but harder to audit as a parity checklist
 - Affected area: `prd.md` Slice 3 / "Any divergence from canonical behavior is either corrected or explicitly justified.".
+
+### KugelAudio reuse-coverage granularity
+- Context: the next Slice 3 item requires reused code paths to stay covered by targeted tests, but the existing diffusion and decoder parity tests depend on optional fixture files and do not directly assert that the KugelAudio generation path is still wiring the canonical solver defaults.
+- Chosen default: add a lightweight non-fixture unit test for KugelAudio solver-config wiring and run it alongside the focused connector/token tests, while continuing to rely on the existing acoustic and DPM solver parity tests for deeper math coverage when fixtures are available.
+- Rejected alternatives:
+  - add another heavy end-to-end KugelAudio run for this item: broader and flakier than needed to prove reuse wiring
+  - treat the existing optional-fixture tests as sufficient on their own: weaker because they do not directly guard the KugelAudio-specific solver setup point
+- Affected area: `prd.md` Slice 3 / "Reused code paths remain covered by targeted tests.".

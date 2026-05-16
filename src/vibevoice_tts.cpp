@@ -1203,6 +1203,15 @@ std::vector<float> run_speech_connector_for_test(const VibeVoiceConfig& cfg,
     return run_speech_connector(cfg, w, x, batch);
 }
 
+DPMSolverConfig kugelaudio_solver_config_for_test(int requested_steps) {
+    DPMSolverConfig solver_cfg;
+    solver_cfg.num_train_timesteps = 1000;
+    solver_cfg.num_inference_steps = requested_steps > 0 ? requested_steps : 20;
+    solver_cfg.solver_order        = 2;
+    solver_cfg.lower_order_final   = true;
+    return solver_cfg;
+}
+
 int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits) {
     return select_kugelaudio_speech_token_from_logits(logits);
 }
@@ -1680,14 +1689,10 @@ int tts_15b_generate(VibeVoiceModel*            model,
     };
 
     // ---- 7. speech-generation loop ----
-    DPMSolverConfig solver_cfg;
     // KugelAudio parity note: reuse the existing ggml DPM-Solver++ path with
     // the same canonical scheduler shape (1000 train steps, order-2,
     // lower_order_final) as kugelaudio_open.models.kugelaudio_inference.
-    solver_cfg.num_train_timesteps = 1000;
-    solver_cfg.num_inference_steps = p.n_diffusion_steps > 0 ? p.n_diffusion_steps : 20;
-    solver_cfg.solver_order        = 2;
-    solver_cfg.lower_order_final   = true;
+    DPMSolverConfig solver_cfg = detail::kugelaudio_solver_config_for_test(p.n_diffusion_steps);
     DPMSolverState solver_state;
     dpm_solver_init(solver_cfg, &solver_state);
 

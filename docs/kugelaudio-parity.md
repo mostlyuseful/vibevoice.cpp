@@ -91,6 +91,7 @@ tracked parity debt, not accidental behavior.
 ## Targeted tests tied to these notes
 - `tests/test_kugelaudio_generation_tokens.cpp`
 - `tests/test_kugelaudio_reused_components.cpp`
+- `tests/test_kugelaudio_reuse_coverage.cpp`
 - `tests/test_dpm_solver.cpp`
 - `tests/test_acoustic.cpp`
 - `tests/test_kugelaudio_decode_smoke.cpp`

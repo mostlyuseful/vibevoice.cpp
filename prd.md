@@ -164,7 +164,7 @@ Preserve maximum reuse of current ggml code where possible, but patch any semant
 AC:
 - [x] Existing diffusion/decoder/connector code is reused where behavior remains valid.
 - [x] Any divergence from canonical behavior is either corrected or explicitly justified.
-- [ ] Reused code paths remain covered by targeted tests.
+- [x] Reused code paths remain covered by targeted tests.
 
 Testing:
 - Unit: low-level behavior around reused components as needed.
