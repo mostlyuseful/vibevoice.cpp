@@ -613,11 +613,19 @@ def convert_checkpoint(
 
     n_total = dec["num_hidden_layers"]
     n_tts_layers = cfg.get("tts_backbone_num_hidden_layers", 0) or 0
+    is_kugelaudio = variant.startswith("kugelaudio")
+    mode = "kugelaudio" if is_kugelaudio else "vibevoice"
     sys.stderr.write(
-        f"wrote {out}: {len(tensors)} tensors  (unmapped={len(unmapped)})  "
-        f"variant={variant} hidden={dec['hidden_size']} lm_layers={n_total - n_tts_layers}+{n_tts_layers} "
-        f"vocab={dec['vocab_size']}\n"
+        f"convert: mode={mode} checkpoint={variant} src={src}\n"
+        f"convert: wrote {out}: {len(tensors)} tensors  (unmapped={len(unmapped)})  "
+        f"hidden={dec['hidden_size']} lm_layers={n_total - n_tts_layers}+{n_tts_layers} "
+        f"vocab={dec['vocab_size']} dtype={dtype}\n"
     )
+    if is_kugelaudio:
+        sem = cfg.get("semantic_tokenizer_config")
+        sys.stderr.write(
+            f"convert: conditioning=acoustic+semantic semantic_config={'present' if sem else 'derived_from_acoustic'}\n"
+        )
     return 0
 
 

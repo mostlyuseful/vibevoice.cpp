@@ -148,6 +148,15 @@ int cmd_tts(int argc, char** argv) {
     // a thin wrapper around that.
     const bool is_15b = (model.variant == "1.5b");
     const bool is_kugelaudio = model.loader.has_key("kugelaudio.architecture");
+
+    // Log model/load config for operator diagnostics.
+    const char* quant_hint = "unknown";
+    if (model_path.find("q8_0") != std::string::npos) quant_hint = "q8_0";
+    else if (model_path.find("f16") != std::string::npos) quant_hint = "f16";
+    else if (model_path.find("fp32") != std::string::npos) quant_hint = "fp32";
+    std::fprintf(stderr, "tts: model_variant=%s kugelaudio=%s quantization_hint=%s\n",
+                 model.variant.c_str(), is_kugelaudio ? "yes" : "no", quant_hint);
+
     if (is_kugelaudio && !voice_path.empty()) {
         std::fprintf(stderr,
                      "tts: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; "
@@ -211,6 +220,13 @@ int cmd_tts(int argc, char** argv) {
     p.cfg_scale         = cfg_scale;
     p.seed              = seed;
     p.verbose           = verbose;
+
+    std::fprintf(stderr,
+                 "tts: generation_settings frames=%d steps=%d cfg=%.2f seed=%u "
+                 "conditioning=%s ref_count=%zu\n",
+                 max_frames, steps, cfg_scale, seed,
+                 have_voice ? "pre_baked_voice" : "raw_reference",
+                 ref_audio.size());
 
     std::vector<float> samples;
     int rc = vv::vibevoice_tts_generate(&model, text, p, &samples);

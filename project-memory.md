@@ -360,3 +360,13 @@
   - write a C++ stderr-capture test for loader errors: more complex and fragile than validating the Python-side messages that developers will see in practice
   - manually audit every error string: not repeatable as a regression check
 - Affected area: `prd.md` Slice 5 / "Converter, loader, conditioning, and unsupported-feature errors are clear and actionable.".
+
+
+### KugelAudio logging contract shape
+- Context: the next Slice 5 item requires logs to include checkpoint/config, converter mode, active conditioning, quantization mode, and eval configuration, but the existing logging was sparse and scattered.
+- Chosen default: add structured startup/summary logging to three key surfaces: (1) converter writes `convert: mode=... checkpoint=... src=...` with conditioning info, (2) CLI TTS writes `tts: model_variant=... kugelaudio=... quantization_hint=...` and `tts: generation_settings frames=... steps=... cfg=... seed=... conditioning=... ref_count=...`, (3) eval harness writes startup config summary with text, ref, generation settings, and model paths. Document the logging contract in `docs/kugelaudio-parity.md`.
+- Rejected alternatives:
+  - add a separate structured-logging library or format: broader than needed for the current acceptance surface
+  - only log in verbose mode: misses the PRD requirement for these to be visible by default for operator diagnostics
+- Affected area: `prd.md` Slice 5 / "Logs include checkpoint/config, converter mode, active conditioning, quantization mode, and eval configuration.".
+

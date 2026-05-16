@@ -352,6 +352,16 @@ def main() -> int:
     write_json(out_dir / "plan.json", plan)
     results_path = out_dir / "results.json"
 
+    sys.stderr.write(
+        f"eval: config={config_path} execute={args.execute}\n"
+        f"eval: text={json.dumps(plan['shared_run']['text'])} ref={plan['shared_run']['reference_audio']['path']}\n"
+        f"eval: generation seed={plan['shared_run']['generation']['seed']} "
+        f"cfg={plan['shared_run']['generation']['cfg_scale']} "
+        f"steps={plan['shared_run']['generation']['steps']} "
+        f"max_frames={plan['shared_run']['generation']['max_frames']}\n"
+        f"eval: canonical_model={plan['canonical']['model']} ggml_model={plan['ggml']['model']}\n"
+    )
+
     failures: list[str] = []
     source_text = plan["shared_run"]["text"]
     if args.execute in {"canonical", "both"}:
