@@ -179,6 +179,11 @@ int vibevoice_tts_generate(VibeVoiceModel*           model,
 namespace detail {
 std::string build_kugelaudio_prompt_single_speaker_for_test(int vae_tok_len,
                                                             const std::string& text);
+std::vector<int32_t> build_kugelaudio_inserted_speech_tokens_for_test(int vae_tok_len);
+int kugelaudio_speech_start_id_for_test();
+int kugelaudio_speech_end_id_for_test();
+int kugelaudio_speech_diffusion_id_for_test();
+int kugelaudio_image_pad_id_for_test();
 }
 
 }  // namespace vv

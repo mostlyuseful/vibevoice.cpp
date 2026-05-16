@@ -1295,6 +1295,19 @@ std::string build_kugelaudio_prompt_single_speaker_for_test(int vae_tok_len,
                                                             const std::string& text) {
     return build_kugelaudio_prompt_single_speaker(vae_tok_len, text);
 }
+
+std::vector<int32_t> build_kugelaudio_inserted_speech_tokens_for_test(int vae_tok_len) {
+    std::vector<int32_t> ids;
+    ids.reserve(static_cast<size_t>(vae_tok_len) + 1);
+    for (int i = 0; i < vae_tok_len; ++i) ids.push_back(kSpeech15bDiffId);
+    ids.push_back(kSpeech15bStartId);
+    return ids;
+}
+
+int kugelaudio_speech_start_id_for_test() { return kSpeech15bStartId; }
+int kugelaudio_speech_end_id_for_test() { return kSpeech15bEndId; }
+int kugelaudio_speech_diffusion_id_for_test() { return kSpeech15bDiffId; }
+int kugelaudio_image_pad_id_for_test() { return kSpeech15bImgPadId; }
 }  // namespace detail
 
 namespace {

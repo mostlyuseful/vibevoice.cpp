@@ -110,3 +110,11 @@
   - allow `Speaker 0:` but reject only `Speaker 1+`: technically workable, but still leaves speaker-tagged dialog semantics in the supported surface
   - silently strip speaker tags back to plain text: too magical and can hide user mistakes when comparing against canonical behavior
 - Affected area: `prd.md` Slice 2 / "Single-speaker input is the only supported path in v1 and is enforced explicitly.".
+
+### KugelAudio speech special-token contract
+- Context: the next Slice 2 sub-task requires special token IDs and placeholder semantics to match the supported checkpoint, but the current runtime carried the IDs only as local constants in `vibevoice_tts.cpp`.
+- Chosen default: treat the canonical KugelAudio text-tokenizer mapping as the contract: `<|vision_start|>=151652`, `<|vision_end|>=151653`, `<|vision_pad|>=151654`, and `<|image_pad|>=151655`, with the prompt inserting only diffusion placeholders in the voice section and a single speech-start token in the output section.
+- Rejected alternatives:
+  - leave the mapping implicit in scattered local constants only: works, but harder to validate and easier to drift accidentally
+  - insert `<|vision_end|>` into the single-speaker voice-input section like legacy VibeVoice 1.5B: diverges from the canonical KugelAudio processor semantics
+- Affected area: `prd.md` Slice 2 / "Special token IDs and placeholder semantics match the supported KugelAudio checkpoint.".
