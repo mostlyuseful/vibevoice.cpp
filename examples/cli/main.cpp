@@ -33,9 +33,8 @@ void print_usage(const char* argv0) {
         "  --voice <path>      pre-baked voice.gguf — use with realtime-0.5B\n"
         "                      models. Mutually exclusive with --ref-audio.\n"
         "  --ref-audio <path>  reference WAV (24 kHz mono, ~5 s) — runtime\n"
-        "                      voice cloning. Use with VibeVoice-1.5B models.\n"
-        "                      Repeat per speaker for multi-speaker dialog;\n"
-        "                      `--text` then needs `Speaker N:` lines.\n"
+        "                      voice cloning. For KugelAudio v1, pass exactly\n"
+        "                      one --ref-audio and plain untagged text only.\n"
         "                      Mutually exclusive with --voice.\n"
         "  --text <string>     input text\n"
         "  --text-file <path>  read text from file\n"
@@ -148,12 +147,19 @@ int cmd_tts(int argc, char** argv) {
     // already says which kind of conditioning it expects; the CLI is
     // a thin wrapper around that.
     const bool is_15b = (model.variant == "1.5b");
+    const bool is_kugelaudio = model.loader.has_key("kugelaudio.architecture");
     if (is_15b && ref_audio.empty()) {
-        std::fprintf(stderr,
-                     "tts: 1.5b model requires at least one --ref-audio "
-                     "(raw 24 kHz mono WAV). Repeat --ref-audio per speaker "
-                     "for multi-speaker dialog. Pre-baked --voice gguf "
-                     "files are realtime-0.5B only.\n");
+        if (is_kugelaudio) {
+            std::fprintf(stderr,
+                         "tts: KugelAudio v1 requires exactly one --ref-audio "
+                         "(raw 24 kHz mono WAV) and plain untagged text.\n");
+        } else {
+            std::fprintf(stderr,
+                         "tts: 1.5b model requires at least one --ref-audio "
+                         "(raw 24 kHz mono WAV). Repeat --ref-audio per speaker "
+                         "for multi-speaker dialog. Pre-baked --voice gguf "
+                         "files are realtime-0.5B only.\n");
+        }
         return 1;
     }
     if (!is_15b && !ref_audio.empty()) {
@@ -162,6 +168,16 @@ int cmd_tts(int argc, char** argv) {
                      "model is variant=%s. Use --voice with a voice gguf "
                      "instead.\n", model.variant.c_str());
         return 1;
+    }
+
+    if (is_kugelaudio) {
+        vv::VibeVoiceTTSParams gate;
+        gate.ref_audio_paths = ref_audio;
+        std::string gate_error;
+        if (!vv::detail::validate_kugelaudio_single_speaker_request(text, gate, &gate_error)) {
+            std::fprintf(stderr, "tts: %s\n", gate_error.c_str());
+            return 1;
+        }
     }
 
     vv::VibeVoiceVoice voice;

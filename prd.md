@@ -114,7 +114,7 @@ Testing:
 Use the current repo’s audio loader path, then resample to 24 kHz mono and apply canonical RMS normalization before acoustic + semantic encoding.
 
 AC:
-- [ ] Raw reference audio is accepted through the runtime/CLI path supported by the repo today.
+- [x] Raw reference audio is accepted through the runtime/CLI path supported by the repo today.
 - [ ] Audio is resampled internally to 24 kHz mono.
 - [ ] Canonical RMS/loudness normalization is applied.
 - [ ] Both acoustic and semantic conditioning are used for the supported path.

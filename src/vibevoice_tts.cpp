@@ -1135,6 +1135,10 @@ bool text_has_speaker_prefix(const std::string& text) {
     return std::regex_search(text, re);
 }
 
+}  // namespace
+
+namespace detail {
+
 bool validate_kugelaudio_single_speaker_request(const std::string& text,
                                                 const VibeVoiceTTSParams& p,
                                                 std::string* error) {
@@ -1152,6 +1156,10 @@ bool validate_kugelaudio_single_speaker_request(const std::string& text,
     }
     return true;
 }
+
+}  // namespace detail
+
+namespace {
 
 std::string format_kugelaudio_single_speaker_text(const std::string& text) {
     std::string formatted_text = text;
@@ -1337,7 +1345,7 @@ int tts_15b_generate(VibeVoiceModel*            model,
     const bool is_kugelaudio = model->loader.has_key("kugelaudio.architecture");
     if (is_kugelaudio) {
         std::string gate_error;
-        if (!validate_kugelaudio_single_speaker_request(text, p, &gate_error)) {
+        if (!detail::validate_kugelaudio_single_speaker_request(text, p, &gate_error)) {
             VV_LOG_ERROR("tts_15b: %s", gate_error.c_str());
             if (p.voice) return -20;
             if (p.ref_audio_paths.size() != 1) return -21;

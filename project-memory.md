@@ -134,3 +134,11 @@
   - keep using the image-pad placeholder prompt for KugelAudio too: easier, but encodes a VibeVoice-specific prompt-token role that canonical KugelAudio does not use
   - rewrite legacy VibeVoice 1.5B CFG in the same increment: broader than needed for the current KugelAudio-focused PRD item
 - Affected area: `prd.md` Slice 2 / "The runtime no longer assumes VibeVoice-only prompt token roles where KugelAudio differs.".
+
+### Shared KugelAudio single-reference gate
+- Context: the next raw-reference item requires the supported single-reference path to be accepted through the runtime/CLI surface, but the validation currently lives only inside the runtime implementation.
+- Chosen default: expose the KugelAudio v1 single-reference request validator through a shared helper used by both runtime and CLI so the accepted shape and rejected shapes stay aligned.
+- Rejected alternatives:
+  - duplicate the validation logic in the CLI: simple short-term, but prone to drift from the runtime gate
+  - test only the runtime call path: misses the PRD requirement that the currently supported CLI path accept the same shape explicitly
+- Affected area: `prd.md` Slice 2 / "Raw reference audio is accepted through the runtime/CLI path supported by the repo today.".

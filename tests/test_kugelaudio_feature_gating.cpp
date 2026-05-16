@@ -41,18 +41,26 @@ int main() {
 
     std::vector<float> samples;
 
+    vv::VibeVoiceTTSParams accepted;
+    accepted.ref_audio_paths = {"a.wav"};
+    std::string gate_error;
+    if (!vv::detail::validate_kugelaudio_single_speaker_request("Hello world.", accepted, &gate_error)) {
+        std::fprintf(stderr, "FAIL: accepted KugelAudio single-reference shape was rejected: %s\n", gate_error.c_str());
+        return 2;
+    }
+
     vv::VibeVoiceTTSParams multi_ref;
     multi_ref.ref_audio_paths = {"a.wav", "b.wav"};
     g_last_log.clear();
     int rc = vv::vibevoice_tts_generate(&model, "Hello world.", multi_ref, &samples);
     if (rc != -21) {
         std::fprintf(stderr, "FAIL: multi-ref gating rc=%d want -21\n", rc);
-        return 2;
+        return 3;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
         g_last_log.find("single-speaker v1") == std::string::npos) {
         std::fprintf(stderr, "FAIL: multi-ref log did not identify single-speaker runtime feature error: %s\n", g_last_log.c_str());
-        return 6;
+        return 7;
     }
 
     vv::VibeVoiceTTSParams speaker_tagged;
@@ -61,12 +69,12 @@ int main() {
     rc = vv::vibevoice_tts_generate(&model, "Speaker 0: Hello world.", speaker_tagged, &samples);
     if (rc != -22) {
         std::fprintf(stderr, "FAIL: speaker-tagged gating rc=%d want -22\n", rc);
-        return 3;
+        return 4;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
         g_last_log.find("plain untagged text") == std::string::npos) {
         std::fprintf(stderr, "FAIL: speaker-tagged log did not identify single-speaker plain-text requirement: %s\n", g_last_log.c_str());
-        return 7;
+        return 8;
     }
 
     vv::VibeVoiceVoice voice;
@@ -77,12 +85,12 @@ int main() {
     rc = vv::vibevoice_tts_generate(&model, "Hello world.", pre_baked_voice, &samples);
     if (rc != -20) {
         std::fprintf(stderr, "FAIL: pre-baked-voice gating rc=%d want -20\n", rc);
-        return 4;
+        return 5;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
         g_last_log.find("pre-baked voice gguf conditioning") == std::string::npos) {
         std::fprintf(stderr, "FAIL: pre-baked-voice log did not identify unsupported voice conditioning: %s\n", g_last_log.c_str());
-        return 8;
+        return 9;
     }
 
     vv::VibeVoiceTTSParams supported_shape;
@@ -90,7 +98,7 @@ int main() {
     rc = vv::vibevoice_tts_generate(&model, "Hello world.", supported_shape, &samples);
     if (rc != -2) {
         std::fprintf(stderr, "FAIL: supported single-ref shape should fall through to tokenizer-not-loaded rc=-2, got %d\n", rc);
-        return 5;
+        return 6;
     }
 
     vv_set_log_callback(nullptr, nullptr);

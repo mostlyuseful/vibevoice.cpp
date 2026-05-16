@@ -177,6 +177,9 @@ int vibevoice_tts_generate(VibeVoiceModel*           model,
                            std::vector<float>*       samples);
 
 namespace detail {
+bool validate_kugelaudio_single_speaker_request(const std::string& text,
+                                                const VibeVoiceTTSParams& p,
+                                                std::string* error);
 std::string build_kugelaudio_prompt_single_speaker_for_test(int vae_tok_len,
                                                             const std::string& text);
 std::vector<int32_t> build_kugelaudio_inserted_speech_tokens_for_test(int vae_tok_len);
