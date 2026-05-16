@@ -321,6 +321,14 @@
   - use an external ASR model for the canonical side: contradicts the PRD requirement to use "the repo's ASR path"
 - Affected area: `prd.md` Slice 4 / "Closed-loop ASR regression is automated for the acceptance path.".
 
+### KugelAudio eval threshold enforcement shape
+- Context: the next Slice 4 item requires f16 to reach at least 95% of canonical recall with an absolute floor of 0.80, but real model artifacts are not available during routine script validation.
+- Chosen default: make the threshold a first-class executable check in the harness (`check_threshold()`). The harness automatically evaluates the threshold when `--execute both` completes successfully and records `threshold_check.passed` + `threshold_check.message` in `results.json`. The logic is unit-tested independently of real model execution.
+- Rejected alternatives:
+  - defer threshold checking to a separate manual review step: weaker automation, harder to integrate into CI
+  - require real model execution in the harness test: too heavy for routine local validation
+- Affected area: `prd.md` Slice 4 / "`f16` must reach at least 95% of canonical recall with a floor of 0.80.".
+
 ### KugelAudio eval results schema v2 (ASR fields)
 - Context: adding ASR to the harness requires new fields in the already-defined results.json schema.
 - Chosen default: add `asr_command`, `asr_log_path`, `asr_return_code`, `asr_transcript`, `recall` to both `canonical` and `ggml` blocks, keeping `schema_version = 1` since this is an additive change to the same schema version.

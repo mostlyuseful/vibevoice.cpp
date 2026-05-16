@@ -246,6 +246,7 @@ def build_results(plan: dict[str, Any]) -> dict[str, Any]:
             "asr_transcript": None,
             "recall": None,
         },
+        "threshold_check": None,
     }
 
 
@@ -294,6 +295,29 @@ def run_one(command: list[str], cwd: str, log_path: str, extra_env: dict[str, st
     with open(log_path, "w", encoding="utf-8") as logf:
         proc = subprocess.run(command, cwd=cwd, env=env, stdout=logf, stderr=subprocess.STDOUT)
     return int(proc.returncode), Path(log_path).read_text(encoding="utf-8") if Path(log_path).exists() else ""
+
+
+def check_threshold(results: dict[str, Any]) -> tuple[bool, str]:
+    """Return (pass, message) for the v1 acceptance threshold."""
+    canonical = results.get("canonical", {})
+    ggml = results.get("ggml", {})
+    c_recall = canonical.get("recall")
+    g_recall = ggml.get("recall")
+    if c_recall is None or g_recall is None:
+        return False, "cannot check threshold: missing recall values"
+    if c_recall == 0.0:
+        return False, f"cannot check threshold: canonical recall is zero (ggml={g_recall:.4f})"
+    ratio = g_recall / c_recall if c_recall > 0 else 0.0
+    floor_ok = g_recall >= 0.80
+    ratio_ok = ratio >= 0.95
+    if floor_ok and ratio_ok:
+        return True, f"PASS  ggml recall={g_recall:.4f}  canonical={c_recall:.4f}  ratio={ratio:.2%}  floor=0.80"
+    reasons: list[str] = []
+    if not ratio_ok:
+        reasons.append(f"ratio {ratio:.2%} < 95% of canonical")
+    if not floor_ok:
+        reasons.append(f"recall {g_recall:.4f} < 0.80 floor")
+    return False, "FAIL  " + "; ".join(reasons) + f"  (ggml={g_recall:.4f} canonical={c_recall:.4f})"
 
 
 def main() -> int:
@@ -359,6 +383,13 @@ def main() -> int:
                 results["ggml"]["recall"] = compute_recall(source_text, asr_log)
             else:
                 failures.append(f"ggml asr rc={asr_rc}")
+
+    # Threshold check is meaningful only when both sides produced recall values
+    if args.execute == "both" and results["canonical"].get("recall") is not None and results["ggml"].get("recall") is not None:
+        passed, msg = check_threshold(results)
+        results["threshold_check"] = {"passed": passed, "message": msg}
+        if not passed:
+            failures.append(msg)
 
     write_json(results_path, results)
 

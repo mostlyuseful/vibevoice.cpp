@@ -80,6 +80,8 @@ def main() -> int:
         raise SystemExit("FAIL: planned results template should not have return codes yet")
     if results["canonical"]["output_sha256"] is not None or results["ggml"]["output_sha256"] is not None:
         raise SystemExit("FAIL: planned results template should not have output hashes yet")
+    if "threshold_check" not in results:
+        raise SystemExit("FAIL: results template missing threshold_check field")
 
     if "asr" not in plan["canonical"]["asr_command"]:
         raise SystemExit("FAIL: canonical ASR command missing asr subcommand")
