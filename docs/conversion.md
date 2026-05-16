@@ -45,7 +45,7 @@ These are surfaced through the standard tokenizer (no patching required).
 
 ## `scripts/convert_vibevoice_to_gguf.py`
 
-Walks a VibeVoice checkpoint directory (`config.json` + sharded
+Walks a VibeVoice or KugelAudio checkpoint directory (`config.json` + sharded
 `model*.safetensors`), maps PyTorch tensor names to our GGUF naming
 convention via an ordered set of regex rewrites, and writes a single GGUF
 with all required metadata.
@@ -57,13 +57,120 @@ python scripts/convert_vibevoice_to_gguf.py \
     --out models/vibevoice-realtime-0.5B.gguf
 ```
 
-Variants are auto-detected from the `architectures` field in `config.json`:
+Variants are auto-detected from the checkpoint config and tensor inventory:
 
-| Variant         | Source repo                                                                       | Notes                                                                |
-| --------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `realtime-0.5b` | `microsoft/VibeVoice-Realtime-0.5B`                                               | TTS, `vibevoice-cli tts --voice <voice.gguf>`                        |
-| `1.5b`          | `microsoft/VibeVoice-1.5B`                                                        | TTS with runtime voice cloning, `vibevoice-cli tts --ref-audio <wav>`|
-| `asr-7b`        | `microsoft/VibeVoice-ASR`                                                         | ASR, `vibevoice-cli asr`                                             |
+| Variant / checkpoint | Source repo | Detection / notes |
+| --- | --- | --- |
+| `realtime-0.5b` | `microsoft/VibeVoice-Realtime-0.5B` | legacy VibeVoice streaming path |
+| `1.5b` | `microsoft/VibeVoice-1.5B` | legacy VibeVoice raw-reference TTS path |
+| `asr-7b` | `microsoft/VibeVoice-ASR` | legacy VibeVoice ASR path |
+| `kugelaudio-0-open` | `kugelaudio/kugelaudio-0-open` | v1-supported KugelAudio path; accepted only when the config signature matches the published open checkpoint |
+
+### KugelAudio v1 support contract
+
+KugelAudio support is intentionally narrow in v1.
+
+The converter currently accepts exactly one KugelAudio checkpoint shape:
+`kugelaudio/kugelaudio-0-open`.
+
+The detection signature is:
+
+| Config field | Required value |
+| --- | --- |
+| `model_type` | `kugelaudio` |
+| `decoder_config.hidden_size` | `3584` |
+| `decoder_config.num_hidden_layers` | `28` |
+| `decoder_config.num_attention_heads` | `28` |
+| `decoder_config.num_key_value_heads` | `4` |
+| `decoder_config.vocab_size` | `152064` |
+| `tts_backbone_num_hidden_layers` | `20` |
+| `acoustic_vae_dim` | `64` |
+| `diffusion_head_config.latent_size` | `64` |
+
+If a checkpoint declares `model_type == "kugelaudio"` but does not match this
+signature, conversion fails explicitly. This is deliberate: v1 is scoped to the
+published open checkpoint only.
+
+### KugelAudio GGUF metadata contract
+
+The converter emits a **dual metadata contract** during migration:
+
+1. **Canonical KugelAudio keys** under `kugelaudio.*`
+2. **Legacy compatibility keys** under `vibevoice.*`
+
+This keeps the runtime load path working while making the intended long-term
+schema explicit.
+
+#### Canonical `kugelaudio.*` keys
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `kugelaudio.schema_version` | `u32` | Current schema version. v1 requires `1`. |
+| `kugelaudio.architecture` | `string` | Always `kugelaudio` for this path. |
+| `kugelaudio.checkpoint` | `string` | Current supported checkpoint ID, `kugelaudio-0-open`. |
+| `kugelaudio.decoder.hidden_size` | `u32` | Qwen decoder hidden size. |
+| `kugelaudio.decoder.num_hidden_layers` | `u32` | Total decoder layer count before LM/TTS split. |
+| `kugelaudio.decoder.tts_hidden_layers` | `u32` | Upper TTS-only layer count. |
+| `kugelaudio.decoder.num_attention_heads` | `u32` | Qwen attention head count. |
+| `kugelaudio.decoder.num_key_value_heads` | `u32` | Qwen KV head count. |
+| `kugelaudio.decoder.head_dim` | `u32` | Per-head hidden width. |
+| `kugelaudio.decoder.vocab_size` | `u32` | Decoder vocab size. |
+| `kugelaudio.decoder.rope_theta` | `f32` | Rope theta. |
+| `kugelaudio.decoder.rms_norm_eps` | `f32` | RMSNorm epsilon for the decoder. |
+| `kugelaudio.acoustic.vae_dim` | `u32` | Acoustic latent width. |
+| `kugelaudio.acoustic.encoder_ratios` | `u32[]` | Acoustic encoder downsample ratios in config order. |
+| `kugelaudio.acoustic.encoder_depths` | `u32[]` | Acoustic encoder stage depths in forward order. |
+| `kugelaudio.acoustic.decoder_depths` | `u32[]` | Acoustic decoder stage depths. |
+| `kugelaudio.semantic.vae_dim` | `u32` | Semantic latent width, when semantic metadata is present. |
+| `kugelaudio.semantic.encoder_ratios` | `u32[]` | Semantic encoder downsample ratios. |
+| `kugelaudio.semantic.encoder_depths` | `u32[]` | Semantic encoder stage depths. |
+| `kugelaudio.diffusion.head_layers` | `u32` | Number of diffusion head blocks. |
+| `kugelaudio.diffusion.ffn_ratio` | `f32` | Diffusion FFN expansion ratio. |
+| `kugelaudio.diffusion.latent_size` | `u32` | Diffusion latent width. |
+| `kugelaudio.sample_rate` | `u32` | Runtime sample rate, currently `24000`. |
+
+#### Legacy `vibevoice.*` compatibility keys
+
+These are emitted alongside the canonical KugelAudio keys so current loader code
+can continue to function during migration.
+
+Important mappings:
+
+| `kugelaudio.*` | compatibility key |
+| --- | --- |
+| `kugelaudio.checkpoint` | `vibevoice.variant` *(currently written as `kugelaudio-0-open`; runtime normalizes this onto the existing `1.5b` branch)* |
+| `kugelaudio.decoder.hidden_size` | `vibevoice.hidden` |
+| `kugelaudio.decoder.num_hidden_layers - kugelaudio.decoder.tts_hidden_layers` | `vibevoice.n_layers_lm` |
+| `kugelaudio.decoder.tts_hidden_layers` | `vibevoice.n_layers_tlm` |
+| `kugelaudio.decoder.num_attention_heads` | `vibevoice.n_heads` |
+| `kugelaudio.decoder.num_key_value_heads` | `vibevoice.n_kv_heads` |
+| `kugelaudio.decoder.head_dim` | `vibevoice.head_dim` |
+| `kugelaudio.decoder.vocab_size` | `vibevoice.vocab_size` |
+| `kugelaudio.decoder.rope_theta` | `vibevoice.rope_theta` |
+| `kugelaudio.decoder.rms_norm_eps` | `vibevoice.rms_norm_eps` |
+| `kugelaudio.acoustic.vae_dim` | `vibevoice.acoustic.vae_dim` |
+| `kugelaudio.acoustic.encoder_ratios` | `vibevoice.acoustic.encoder_ratios` |
+| `kugelaudio.acoustic.encoder_depths` | `vibevoice.acoustic.encoder_depths` |
+| `kugelaudio.acoustic.decoder_depths` | `vibevoice.acoustic.decoder_depths` |
+| `kugelaudio.semantic.*` | `vibevoice.semantic.*` |
+| `kugelaudio.diffusion.head_layers` | `vibevoice.diffusion.head_layers` |
+| `kugelaudio.diffusion.ffn_ratio` | `vibevoice.diffusion.ffn_ratio` |
+| `kugelaudio.diffusion.latent_size` | `vibevoice.diffusion.latent` |
+| `kugelaudio.sample_rate` | `vibevoice.sample_rate` |
+
+#### Loader expectations
+
+The runtime currently treats KugelAudio GGUFs as a validated migration format:
+
+- `kugelaudio.schema_version` must be `1`
+- `kugelaudio.checkpoint` must be `kugelaudio-0-open`
+- if only KugelAudio metadata is available, runtime config fields are resolved
+  from `kugelaudio.*`
+- the current runtime branch normalization maps `kugelaudio-0-open` onto the
+  existing `1.5b` load path until a dedicated KugelAudio runtime variant exists
+
+Future validation work should treat those four bullets as the minimum loader
+contract.
 
 ### GGUF tensor naming
 
@@ -90,6 +197,10 @@ PyTorch module hierarchy. The notable patterns:
 
 Pass `--strict` to fail the conversion if any source tensor key is left
 unmapped — useful when validating against a new upstream release.
+
+For KugelAudio v1, `--strict` should be the default mode for schema-evolution
+work: if a new checkpoint revision adds, removes, or renames tensors, prefer an
+explicit converter failure over silently producing an ambiguous GGUF.
 
 ### Encoder ratio quirk
 

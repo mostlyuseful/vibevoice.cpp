@@ -22,3 +22,11 @@
   - map KugelAudio onto `realtime-0.5b`: a worse architectural fit because the raw-reference conditioning path and encoder usage are closer to the current 1.5b path
   - leave the variant unnormalized: would bypass existing branch logic and fail to load any integrated runtime state
 - Affected area: `prd.md` Slice 1 / loader compatibility work and upcoming Slice 2/3 runtime adaptation.
+
+### KugelAudio schema documentation location
+- Context: the next PRD item requires the GGUF schema to be documented clearly enough for future validation work, but the repo already has `docs/conversion.md` as the conversion-facing document and no existing dedicated schema doc.
+- Chosen default: extend `docs/conversion.md` with a KugelAudio-specific schema contract section instead of creating a separate `docs/gguf-schema.md` right now.
+- Rejected alternatives:
+  - create a brand-new schema-only doc immediately: cleaner separation, but adds another place to keep in sync during rapid migration
+  - document only in converter source comments: too discoverability-poor for future agents working from docs first
+- Affected area: `prd.md` Slice 1 / "The schema is documented well enough that a future agent can add validation without re-deriving intent.".

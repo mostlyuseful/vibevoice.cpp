@@ -14,7 +14,7 @@ AC:
 - [x] The converter accepts `kugelaudio/kugelaudio-0-open` inputs and emits a GGUF with an explicit KugelAudio metadata contract.
 - [x] Unsupported checkpoints fail clearly during conversion.
 - [x] The runtime loader accepts the converted KugelAudio GGUF and surfaces clear errors for missing or incompatible metadata.
-- [ ] The schema is documented well enough that a future agent can add validation without re-deriving intent.
+- [x] The schema is documented well enough that a future agent can add validation without re-deriving intent.
 
 Testing:
 - Unit: metadata parsing, variant/config detection, tensor-name rewrite coverage, unsupported-checkpoint failure cases.
