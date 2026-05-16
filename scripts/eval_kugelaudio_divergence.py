@@ -80,6 +80,9 @@ def validate_exists(label: str, path_value: str | None, allow_missing: bool) -> 
 def normalize_config(cfg: dict[str, Any], config_path: Path) -> dict[str, Any]:
     base = config_path.parent.resolve()
     out_dir = resolve_path(base, str(require(cfg, "output_dir")))
+    # Eval-surface seam: keep quantized artifact slots explicit in the config so
+    # post-v1 acceptance work can widen beyond the current f16/q8_0 pair without
+    # redesigning the harness contract.
     norm = {
         "canonical_repo": resolve_path(base, str(require(cfg, "canonical_repo"))),
         "canonical_model": str(require(cfg, "canonical_model")),

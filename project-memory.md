@@ -410,3 +410,11 @@
   - leave the single-speaker helper as the only API: simpler short-term, but makes future widening look like special-case patching
   - add partial V2 fields to `VibeVoiceTTSParams` right now: broader than needed for the current v1-only increment
 - Affected area: `prd.md` Slice 5 / "V1 design does not block deferred features.".
+
+### KugelAudio deferred-feature seam documentation
+- Context: the next Slice 5 item requires deferred-feature seams to be identified in code/docs where relevant, but those seams were only implicit across prior refactors.
+- Chosen default: document the main widening seams explicitly in `docs/kugelaudio-parity.md` (request-shape seam, prompt-builder seam, eval/quantization seam, deferred-scope boundary) and add a small code comment in the eval harness near the quantized-model slots. Back this with a regression test that checks the seam markers remain visible.
+- Rejected alternatives:
+  - scatter one-off TODO comments only in code: too easy to miss and too weak as maintainer guidance
+  - create a brand-new V2 design doc: broader than needed while the parity note already tracks the relevant acceptance/deferred boundaries
+- Affected area: `prd.md` Slice 5 / "Deferred-feature seams are identified in code/docs where relevant.".

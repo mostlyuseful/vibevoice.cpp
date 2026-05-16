@@ -176,6 +176,41 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
   - By default, raw prompt text and raw audio paths are not emitted; logs use length/hash summaries instead
 - Quantization: use `scripts/quantize_gguf.py --src f16.gguf --out q8_0.gguf --type q8_0` to produce the q8_0 artifact from a converted f16 model
 
+### Deferred-feature seams for post-v1 work
+These are the current places where future features should widen behavior,
+rather than patching the v1 path ad hoc.
+
+- **Request-shape seam**
+  - Code: `src/vibevoice_tts.hpp` / `src/vibevoice_tts.cpp`
+  - Entrypoints: `KugelAudioRequestPolicy`, `kugelaudio_v1_request_policy()`,
+    `validate_kugelaudio_request(...)`
+  - Intended future use: widen request validation for multi-reference input,
+    speaker-tagged dialog, or other conditioning shapes by adding/changing a
+    policy profile instead of scattering new conditionals across CLI/runtime/CAPI.
+
+- **Prompt-builder seam**
+  - Code: `src/vibevoice_tts.cpp`
+  - Entrypoints: `build_prompt_15b_legacy(...)` and
+    `build_kugelaudio_prompt_single_speaker(...)`
+  - Intended future use: keep legacy VibeVoice prompt behavior isolated while
+    allowing future KugelAudio prompt shapes (e.g. multi-speaker or chunked
+    text) to land in dedicated builders without regressing the v1 builder.
+
+- **Eval / quantization seam**
+  - Code: `scripts/eval_kugelaudio_divergence.py`
+  - Entrypoints: normalized config fields such as `ggml_model`,
+    `ggml_model_q8_0`, and the shared `results.json` contract
+  - Intended future use: extend acceptance coverage to broader quantization
+    modes and related execution targets without redefining the fixture/eval
+    surface from scratch.
+
+- **Deferred-scope boundary**
+  - Docs: `prd.md` Slice 6 and this note
+  - Intended future use: long-text chunking, language hints, multi-speaker
+    support, KV-cache quantization, and broader quantization formats are
+    explicitly deferred and should land through the seams above, not as partial
+    changes in the v1 critical path.
+
 ### ASR assumptions for closed-loop eval
 The harness reuses the repo's existing ASR path (`vibevoice-cli asr` -> `vv::vibevoice_asr_transcribe()`) rather than introducing a new evaluator:
 - The ASR model is loaded via `vibevoice_load()` with `variant == "asr-7b"`

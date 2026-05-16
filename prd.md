@@ -298,7 +298,7 @@ Leave clean seams for later work: chunking, language hints, multi-speaker, KV-ca
 
 AC:
 - [x] V1 design does not block deferred features.
-- [ ] Deferred-feature seams are identified in code/docs where relevant.
+- [x] Deferred-feature seams are identified in code/docs where relevant.
 - [ ] No V2 feature is half-implemented in the critical path.
 
 Testing:
