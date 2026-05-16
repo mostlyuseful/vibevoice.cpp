@@ -102,3 +102,11 @@
   - keep the full-string encode + scan approach: simpler short-term, but keeps token placement dependent on implicit tokenizer behavior rather than explicit KugelAudio prompt semantics
   - fully replace legacy 1.5B token assembly too: broader migration risk than needed for the current KugelAudio-only PRD increment
 - Affected area: `prd.md` Slice 2 / "Prompt/tokenization logic is driven by KugelAudio semantics, not old VibeVoice assumptions.".
+
+### KugelAudio strict single-speaker input policy
+- Context: the next Slice 2 item requires single-speaker input to be the only supported v1 mode, but the canonical processor will happily preserve `Speaker 0:`-prefixed text and the repo still carries legacy multi-speaker prompt codepaths.
+- Chosen default: for KugelAudio v1, reject any explicit `Speaker N:`-tagged dialog text at runtime, including `Speaker 0:` input, and require plain untagged text plus exactly one raw reference audio.
+- Rejected alternatives:
+  - allow `Speaker 0:` but reject only `Speaker 1+`: technically workable, but still leaves speaker-tagged dialog semantics in the supported surface
+  - silently strip speaker tags back to plain text: too magical and can hide user mistakes when comparing against canonical behavior
+- Affected area: `prd.md` Slice 2 / "Single-speaker input is the only supported path in v1 and is enforced explicitly.".

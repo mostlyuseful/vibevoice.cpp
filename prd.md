@@ -88,7 +88,7 @@ Adapt the prompt builder and tokenizer integration so the runtime matches `../ku
 AC:
 - [x] Prompt format matches canonical KugelAudio sections: system prompt, `Voice input:`, `Text input:`, `Speech output:`.
 - [x] Prompt/tokenization logic is driven by KugelAudio semantics, not old VibeVoice assumptions.
-- [ ] Single-speaker input is the only supported path in v1 and is enforced explicitly.
+- [x] Single-speaker input is the only supported path in v1 and is enforced explicitly.
 
 Testing:
 - Unit: prompt-string/prompt-token parity for fixed examples.

@@ -49,8 +49,9 @@ int main() {
         std::fprintf(stderr, "FAIL: multi-ref gating rc=%d want -21\n", rc);
         return 2;
     }
-    if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: multi-ref log did not identify runtime feature error: %s\n", g_last_log.c_str());
+    if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
+        g_last_log.find("single-speaker v1") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: multi-ref log did not identify single-speaker runtime feature error: %s\n", g_last_log.c_str());
         return 6;
     }
 
@@ -62,8 +63,9 @@ int main() {
         std::fprintf(stderr, "FAIL: speaker-tagged gating rc=%d want -22\n", rc);
         return 3;
     }
-    if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: speaker-tagged log did not identify runtime feature error: %s\n", g_last_log.c_str());
+    if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
+        g_last_log.find("plain untagged text") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: speaker-tagged log did not identify single-speaker plain-text requirement: %s\n", g_last_log.c_str());
         return 7;
     }
 
@@ -77,8 +79,9 @@ int main() {
         std::fprintf(stderr, "FAIL: pre-baked-voice gating rc=%d want -20\n", rc);
         return 4;
     }
-    if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: pre-baked-voice log did not identify runtime feature error: %s\n", g_last_log.c_str());
+    if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
+        g_last_log.find("pre-baked voice gguf conditioning") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: pre-baked-voice log did not identify unsupported voice conditioning: %s\n", g_last_log.c_str());
         return 8;
     }
 

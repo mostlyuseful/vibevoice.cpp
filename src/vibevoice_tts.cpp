@@ -1128,14 +1128,29 @@ constexpr int kSpeech15bDiffId  = 151654;  // <|vision_pad|>
 constexpr int kSpeech15bImgPadId = 151655; // <|image_pad|> — negative branch
 constexpr int kSpeech15bCompressRatio = 3200;
 
-// Returns true if `text` already contains a "Speaker N:" line marker
-// anywhere — in which case the caller wants the multi-speaker dialog
-// passed through verbatim. Otherwise we wrap the whole thing as a
-// single Speaker 0 line.
+// Returns true if `text` contains any explicit "Speaker N:" marker.
 bool text_has_speaker_prefix(const std::string& text) {
     static const std::regex re(R"(\bSpeaker\s+\d+\s*:)",
                                 std::regex::ECMAScript);
     return std::regex_search(text, re);
+}
+
+bool validate_kugelaudio_single_speaker_request(const std::string& text,
+                                                const VibeVoiceTTSParams& p,
+                                                std::string* error) {
+    if (p.voice) {
+        if (error) *error = "unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; use exactly one raw reference audio input";
+        return false;
+    }
+    if (p.ref_audio_paths.size() != 1) {
+        if (error) *error = "unsupported KugelAudio runtime feature: single-speaker v1 requires exactly one raw reference audio input";
+        return false;
+    }
+    if (text_has_speaker_prefix(text)) {
+        if (error) *error = "unsupported KugelAudio runtime feature: single-speaker v1 requires plain untagged text, not Speaker-tagged dialog input";
+        return false;
+    }
+    return true;
 }
 
 std::string format_kugelaudio_single_speaker_text(const std::string& text) {
@@ -1296,17 +1311,11 @@ int tts_15b_generate(VibeVoiceModel*            model,
 
     const bool is_kugelaudio = model->loader.has_key("kugelaudio.architecture");
     if (is_kugelaudio) {
-        if (p.voice) {
-            VV_LOG_ERROR("tts_15b: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; use exactly one raw reference audio input");
-            return -20;
-        }
-        if (p.ref_audio_paths.size() != 1) {
-            VV_LOG_ERROR("tts_15b: unsupported KugelAudio runtime feature: expected exactly one raw reference audio input, got %zu",
-                         p.ref_audio_paths.size());
-            return -21;
-        }
-        if (text_has_speaker_prefix(text)) {
-            VV_LOG_ERROR("tts_15b: unsupported KugelAudio runtime feature: speaker-tagged / multi-speaker dialog input");
+        std::string gate_error;
+        if (!validate_kugelaudio_single_speaker_request(text, p, &gate_error)) {
+            VV_LOG_ERROR("tts_15b: %s", gate_error.c_str());
+            if (p.voice) return -20;
+            if (p.ref_audio_paths.size() != 1) return -21;
             return -22;
         }
     }
