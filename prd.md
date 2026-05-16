@@ -251,9 +251,9 @@ Testing:
 Reuse current ASR and shared speech helpers rather than inventing a separate evaluator unless forced.
 
 AC:
-- [ ] Existing ASR code is reused where it keeps the eval path simple.
-- [ ] Closed-loop harness integrates cleanly with the current test setup.
-- [ ] Any ASR-specific assumptions needed for KugelAudio eval are documented.
+- [x] Existing ASR code is reused where it keeps the eval path simple.
+- [x] Closed-loop harness integrates cleanly with the current test setup.
+- [x] Any ASR-specific assumptions needed for KugelAudio eval are documented.
 
 Testing:
 - Unit: none beyond helper-level additions.

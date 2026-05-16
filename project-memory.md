@@ -344,3 +344,11 @@
   - require q8_0 conversion in every test run: too heavy for routine local validation
   - skip q8_0 entirely and only test f16: would leave a gap in the acceptance surface
 - Affected area: `prd.md` Slice 4 / "`q8_0` must complete conversion, load, and end-to-end generation on the same path.".
+
+### KugelAudio ASR reuse validation
+- Context: the next Slice 4 sub-task requires documenting ASR-specific assumptions and validating that the harness reuses the repo's ASR path rather than inventing a new evaluator.
+- Chosen default: extend the recall helpers test with realistic multi-segment ASR output examples (matching the C++ ASR's JSON Content-field format), and document the ASR assumptions in `docs/kugelaudio-parity.md` (ASR model loading, RMS normalization, transcript format, Content extraction, recall metric alignment).
+- Rejected alternatives:
+  - add a heavy end-to-end ASR integration test: already covered by the harness execution path; repeating it as a separate test would be redundant
+  - document ASR assumptions only in code comments: less discoverable for future evaluators
+- Affected area: `prd.md` Slice 4 / "Existing ASR code is reused where it keeps the eval path simple." and related sub-task items.

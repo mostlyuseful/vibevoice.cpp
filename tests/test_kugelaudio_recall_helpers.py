@@ -16,12 +16,25 @@ from eval_kugelaudio_divergence import extract_content, word_set, compute_recall
 
 
 def main() -> int:
-    # Test extract_content
+    # Test extract_content against realistic ASR JSON output shapes
+    # The C++ ASR path outputs raw text with embedded JSON fields.
     raw1 = '{"Content":"Hello world"}'
     assert extract_content(raw1) == "Hello world", f"FAIL: {extract_content(raw1)}"
 
     raw2 = '{"Start":"0.0","Content":"first"}{"Content":"second"}'
     assert extract_content(raw2) == "first second", f"FAIL: {extract_content(raw2)}"
+
+    # Multi-segment ASR output (the C++ ASR may emit multiple JSON objects for long audio)
+    raw3 = '{"Start":"0.00","End":"1.50","Speaker ID":"0","Content":"Hello world this is"}{"Start":"1.50","End":"3.00","Speaker ID":"0","Content":"a test of voice cloning"}'
+    assert extract_content(raw3) == "Hello world this is a test of voice cloning", f"FAIL: multi-segment {extract_content(raw3)}"
+
+    # Empty content field
+    raw4 = '{"Content":""}'
+    assert extract_content(raw4) == "", f"FAIL: empty content {extract_content(raw4)}"
+
+    # Mixed JSON with extra keys between Content fields
+    raw5 = '{"Start":"0.0","Content":"alpha","Speaker ID":"0"}{"Start":"1.0","Content":"beta"}'
+    assert extract_content(raw5) == "alpha beta", f"FAIL: mixed keys {extract_content(raw5)}"
 
     # Test word_set
     assert word_set("Hello, world!") == {"hello", "world"}

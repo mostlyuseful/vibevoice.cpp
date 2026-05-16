@@ -170,6 +170,18 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
   - Validated by `tests/test_kugelaudio_q8_0_smoke.cpp` (non-empty, finite, non-silent output)
 - Failure diagnostics: the harness produces separate `.log` files for every step (TTS and ASR for both canonical and ggml), plus `results.json` with structured status, return codes, SHA256s, transcripts, and recall values. When the threshold fails, `threshold_check.message` states exactly which boundary was crossed (ratio or floor).
 - Quantization: use `scripts/quantize_gguf.py --src f16.gguf --out q8_0.gguf --type q8_0` to produce the q8_0 artifact from a converted f16 model
+
+### ASR assumptions for closed-loop eval
+The harness reuses the repo's existing ASR path (`vibevoice-cli asr` -> `vv::vibevoice_asr_transcribe()`) rather than introducing a new evaluator:
+- The ASR model is loaded via `vibevoice_load()` with `variant == "asr-7b"`
+- Audio input is RMS-normalized to -25 dBFS before encoding (same as upstream)
+- Transcript output is raw decoded text that may contain JSON-like fields with `"Content":"..."` segments
+- The harness's `extract_content()` is a Python mirror of the C++ `extract_content()` logic in `test_15b_closed_loop.cpp`
+- Word-level recall is computed from the union of all Content fields, exactly matching the existing closed-loop metric
+
+If the ASR output format changes (e.g., different JSON schema or plain text output), the `extract_content()` helper and threshold tests must be updated together.
+
+## Targeted tests tied to these notes
 - `tests/test_kugelaudio_generation_tokens.cpp`
 - `tests/test_kugelaudio_reused_components.cpp`
 - `tests/test_kugelaudio_reuse_coverage.cpp`
@@ -178,3 +190,4 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
 - `tests/test_dpm_solver.cpp`
 - `tests/test_acoustic.cpp`
 - `tests/test_kugelaudio_decode_smoke.cpp`
+- `tests/test_kugelaudio_q8_0_smoke.cpp`
