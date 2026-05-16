@@ -94,3 +94,11 @@
   - replace the existing 1.5B builder for all callers: riskier because it could silently regress legacy VibeVoice-specific tests and flows
   - keep one builder with many conditional branches: workable, but less readable than an explicit split while prompt semantics are still diverging
 - Affected area: `prd.md` Slice 2 / "Prompt format matches canonical KugelAudio sections...".
+
+### KugelAudio section-wise token assembly
+- Context: after splitting the prompt builders, the KugelAudio path still tokenized one big prompt string and then searched the resulting token stream for placeholder IDs, which preserved some old VibeVoice-style assumptions about prompt/token coupling.
+- Chosen default: assemble KugelAudio prompt tokens section-by-section using the canonical processor semantics, inserting speech placeholder IDs (`<|vision_pad|>`) and speech-start IDs (`<|vision_start|>`) directly instead of relying on a full-string encode-and-scan pass.
+- Rejected alternatives:
+  - keep the full-string encode + scan approach: simpler short-term, but keeps token placement dependent on implicit tokenizer behavior rather than explicit KugelAudio prompt semantics
+  - fully replace legacy 1.5B token assembly too: broader migration risk than needed for the current KugelAudio-only PRD increment
+- Affected area: `prd.md` Slice 2 / "Prompt/tokenization logic is driven by KugelAudio semantics, not old VibeVoice assumptions.".

@@ -1138,6 +1138,68 @@ bool text_has_speaker_prefix(const std::string& text) {
     return std::regex_search(text, re);
 }
 
+std::string format_kugelaudio_single_speaker_text(const std::string& text) {
+    std::string formatted_text = text;
+    while (!formatted_text.empty() &&
+           (formatted_text.back() == ' ' || formatted_text.back() == '\t' ||
+            formatted_text.back() == '\r' || formatted_text.back() == '\n')) {
+        formatted_text.pop_back();
+    }
+    if (formatted_text.rfind("Speaker", 0) != 0) {
+        formatted_text = "Speaker 0: " + formatted_text;
+    }
+    return formatted_text;
+}
+
+struct KugelAudioPromptSections {
+    std::string system_prompt;
+    std::string voice_input_header;
+    std::string voice_speaker_prefix;
+    std::string text_input_header;
+    std::string speaker_text;
+    std::string speech_output_header;
+};
+
+KugelAudioPromptSections build_kugelaudio_prompt_sections(int /*vae_tok_len*/,
+                                                          const std::string& text) {
+    KugelAudioPromptSections s;
+    s.system_prompt = " Transform the text provided by various speakers into speech output, utilizing the distinct voice of each respective speaker.\n";
+    s.voice_input_header = " Voice input:\n";
+    s.voice_speaker_prefix = " Speaker 0:";
+    s.text_input_header = " Text input:\n";
+    s.speaker_text = " " + format_kugelaudio_single_speaker_text(text) + "\n";
+    s.speech_output_header = " Speech output:\n";
+    return s;
+}
+
+void build_kugelaudio_prompt_input_ids(const Tokenizer& tokenizer,
+                                       int vae_tok_len,
+                                       const std::string& text,
+                                       std::vector<int32_t>* input_ids,
+                                       std::vector<int>* pad_positions) {
+    const auto s = build_kugelaudio_prompt_sections(vae_tok_len, text);
+    input_ids->clear();
+    pad_positions->clear();
+
+    auto append = [&](const std::string& chunk) {
+        auto ids = tokenizer.encode(chunk);
+        input_ids->insert(input_ids->end(), ids.begin(), ids.end());
+    };
+
+    append(s.system_prompt);
+    append(s.voice_input_header);
+    append(s.voice_speaker_prefix);
+    for (int j = 0; j < vae_tok_len; ++j) {
+        pad_positions->push_back(static_cast<int>(input_ids->size()));
+        input_ids->push_back(kSpeech15bDiffId);
+    }
+    append("\n");
+    append(s.text_input_header);
+    append(s.speaker_text);
+    append(s.speech_output_header);
+    input_ids->push_back(kSpeech15bStartId);
+}
+
 // Legacy VibeVoice 1.5B prompt builder. Kept for non-KugelAudio paths.
 std::string build_prompt_15b_legacy(const std::vector<int>& vae_tok_lens,
                                     const std::string& text) {
@@ -1177,28 +1239,17 @@ std::string build_prompt_15b_legacy(const std::vector<int>& vae_tok_lens,
 // kugelaudio_open.processors.kugelaudio_processor.KugelAudioProcessor.
 std::string build_kugelaudio_prompt_single_speaker(int vae_tok_len,
                                                    const std::string& text) {
-    std::string formatted_text = text;
-    while (!formatted_text.empty() &&
-           (formatted_text.back() == ' ' || formatted_text.back() == '\t' ||
-            formatted_text.back() == '\r' || formatted_text.back() == '\n')) {
-        formatted_text.pop_back();
-    }
-    if (formatted_text.rfind("Speaker", 0) != 0) {
-        formatted_text = "Speaker 0: " + formatted_text;
-    }
-
+    const auto s = build_kugelaudio_prompt_sections(vae_tok_len, text);
     std::string out;
-    out.reserve(1024 + static_cast<size_t>(vae_tok_len) * 14 + formatted_text.size());
-    out += " Transform the text provided by various speakers into speech output, utilizing the distinct voice of each respective speaker.\n";
-    out += " Voice input:\n";
-    out += " Speaker 0:";
+    out.reserve(1024 + static_cast<size_t>(vae_tok_len) * 14 + s.speaker_text.size());
+    out += s.system_prompt;
+    out += s.voice_input_header;
+    out += s.voice_speaker_prefix;
     for (int j = 0; j < vae_tok_len; ++j) out += "<|vision_pad|>";
     out += "\n";
-    out += " Text input:\n";
-    out += " ";
-    out += formatted_text;
-    out += "\n";
-    out += " Speech output:\n";
+    out += s.text_input_header;
+    out += s.speaker_text;
+    out += s.speech_output_header;
     out += "<|vision_start|>";
     return out;
 }
@@ -1353,21 +1404,25 @@ int tts_15b_generate(VibeVoiceModel*            model,
     }
 
     // ---- 2. build prompt + tokenize ----
-    const std::string prompt = is_kugelaudio
-        ? detail::build_kugelaudio_prompt_single_speaker_for_test(per_speaker_Tc.front(), text)
-        : build_prompt_15b_legacy(per_speaker_Tc, text);
-    const auto input_ids = model->tokenizer.encode(prompt);
+    std::vector<int32_t> input_ids;
+    std::vector<int> pad_positions;
+    if (is_kugelaudio) {
+        build_kugelaudio_prompt_input_ids(model->tokenizer, per_speaker_Tc.front(), text,
+                                          &input_ids, &pad_positions);
+    } else {
+        const std::string prompt = build_prompt_15b_legacy(per_speaker_Tc, text);
+        input_ids = model->tokenizer.encode(prompt);
+        pad_positions.reserve(total_Tc);
+        for (int i = 0; i < static_cast<int>(input_ids.size()); ++i) {
+            if (input_ids[i] == kSpeech15bDiffId) pad_positions.push_back(i);
+        }
+    }
     if (input_ids.empty()) {
         VV_LOG_ERROR("tts_15b: tokenizer returned no tokens");
         return -7;
     }
     const int N = static_cast<int>(input_ids.size());
 
-    std::vector<int> pad_positions;
-    pad_positions.reserve(total_Tc);
-    for (int i = 0; i < N; ++i) {
-        if (input_ids[i] == kSpeech15bDiffId) pad_positions.push_back(i);
-    }
     if (static_cast<int>(pad_positions.size()) != total_Tc) {
         VV_LOG_ERROR("tts_15b: prompt has %zu vision_pad tokens, want %d "
                      "(sum of per-speaker frames; tokenizer mis-decoding?)",
