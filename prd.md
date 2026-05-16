@@ -190,7 +190,7 @@ Testing:
 Pin CPU determinism expectations so parity and regression tests are meaningful.
 
 AC:
-- [ ] Fixed seed/settings on CPU produce deterministic behavior suitable for regression testing.
+- [x] Fixed seed/settings on CPU produce deterministic behavior suitable for regression testing.
 - [ ] Seed plumbing is exposed end-to-end through the CLI/eval path.
 - [ ] Known nondeterministic cases are documented if any remain.
 

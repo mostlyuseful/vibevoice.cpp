@@ -254,3 +254,11 @@
   - add a separate standalone WAV-writer unit test only: helpful, but weaker for the CLI-specific acceptance item
   - trust successful reload alone as sufficient proof: simpler, but less explicit about the on-disk waveform contract
 - Affected area: `prd.md` Slice 3 / "Generated output is written as a valid waveform file.".
+
+### KugelAudio CPU determinism assertion shape
+- Context: the next seeded-runtime item requires CPU determinism suitable for regression testing, but the repo supports multiple backends and the strongest practical assertion level is not spelled out.
+- Chosen default: force `VIBEVOICE_BACKEND=cpu` inside the dedicated determinism test and require exact sample-vector equality across two runs with the same model/text/reference/seed/settings.
+- Rejected alternatives:
+  - allow approximate equality only: weaker than needed for regression-oriented CPU determinism
+  - test whichever backend happens to initialize first: ambiguous, because the PRD item is explicitly about CPU eval determinism
+- Affected area: `prd.md` Slice 3 / deterministic seeded runtime behavior on CPU.
