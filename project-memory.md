@@ -279,6 +279,15 @@
   - add a separate determinism-only doc immediately: cleaner in isolation, but unnecessary overhead while the parity note already tracks Slice 3 behavior
 - Affected area: `prd.md` Slice 3 / "Known nondeterministic cases are documented if any remain.".
 
+### KugelAudio eval reference fixture shape
+- Context: the next Slice 4 item requires a reproducible reference sample as an acceptance fixture, but the repo has no audio fixtures yet.
+- Chosen default: commit a small synthetic 24 kHz mono 16-bit PCM WAV fixture to `tests/fixtures/reference_sine.wav` with deterministic properties (440 Hz sine, -18 dBFS, 3 s duration), plus a script to regenerate it. The eval config points to this fixture by a relative path so both canonical and ggml runs can use the same artifact directly.
+- Rejected alternatives:
+  - depend on an external/downloaded reference audio: harder to reproduce from a clean checkout
+  - generate the fixture inline inside the test each run: easy to miss in a fresh checkout and harder to ensure stable hashing
+  - commit a generic existing WAV unmodified: might lack clear known-good properties for regression testing
+- Affected area: `prd.md` Slice 4 / "At least one reproducible reference sample is defined.".
+
 ### KugelAudio eval setup config + plan mode
 - Context: the first Slice 4 item requires the canonical-vs-ggml evaluation setup to be scripted and reproducible, but the repo cannot assume large model artifacts are always present during routine local validation.
 - Chosen default: define the eval setup around one JSON config file plus a `--plan` dry-run mode in the harness script; `--plan` may be used with `--allow-missing-artifacts` for hermetic validation, while real execution still validates required artifacts.

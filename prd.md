@@ -222,7 +222,7 @@ Testing:
 Choose and document the fixed prompt(s), reference WAV(s), and generation settings used for acceptance.
 
 AC:
-- [ ] At least one reproducible reference sample is defined.
+- [x] At least one reproducible reference sample is defined.
 - [ ] At least one reproducible voice-cloned sample is defined.
 - [ ] Fixture selection is documented well enough for a fresh developer to rerun.
 

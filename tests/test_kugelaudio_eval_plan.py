@@ -42,10 +42,10 @@ def main() -> int:
         raise SystemExit("FAIL: generation settings were not normalized correctly")
     if shared["text"] != "Hello world.":
         raise SystemExit("FAIL: text was not pinned into shared_run")
-    if shared["reference_audio"]["path"] != str((repo / "artifacts" / "fixtures" / "reference.wav").resolve()):
+    if shared["reference_audio"]["path"] != str((repo / "tests" / "fixtures" / "reference_sine.wav").resolve()):
         raise SystemExit("FAIL: reference audio path was not normalized into shared_run")
-    if shared["reference_audio"]["sha256"] is not None:
-        raise SystemExit("FAIL: sha256 should be absent in allow-missing-artifacts plan fixture")
+    if shared["reference_audio"]["sha256"] is None:
+        raise SystemExit("FAIL: sha256 should be present for actual fixture file")
     if plan["canonical"]["command"][0:3] != ["uv", "run", "python"]:
         raise SystemExit("FAIL: canonical command shape mismatch")
     if plan["ggml"]["command"][0] != str((repo / "build" / "bin" / "vibevoice-cli").resolve()):

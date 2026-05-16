@@ -1,10 +1,11 @@
 {
+  "comment": "Evaluation fixture config for KugelAudio v1 acceptance. All paths are relative to this file.",
   "canonical_repo": "../../../kugelaudio-open",
   "canonical_model": "kugelaudio/kugelaudio-0-open",
   "ggml_cli": "../../build/bin/vibevoice-cli",
   "ggml_model": "../../artifacts/models/kugelaudio-f16.gguf",
   "ggml_tokenizer": "../../artifacts/models/tokenizer.gguf",
-  "reference_audio": "../../artifacts/fixtures/reference.wav",
+  "reference_audio": "reference_sine.wav",
   "text": "Hello world.",
   "output_dir": "../../artifacts/eval/kugelaudio-smoke",
   "seed": 12345,

@@ -121,7 +121,23 @@ These are not current regression promises and should be treated as such:
 
 In short: for acceptance/regression comparisons today, force CPU first and keep the full input + settings tuple pinned.
 
-## Targeted tests tied to these notes
+## Evaluation fixtures and harness setup
+
+### Reference audio fixture
+- File: `tests/fixtures/reference_sine.wav`
+- Properties: 24 kHz, mono, 16-bit PCM, 3.0 s, 440 Hz sine @ -18 dBFS
+- Generator: `uv run scripts/generate_eval_fixture.py`
+- Config wiring: `tests/fixtures/kugelaudio_eval_config.json` points to it with `"reference_audio": "reference_sine.wav"` (relative to fixtures dir)
+- Purpose: acceptance baseline; any downstream deterministic generation expected to produce the same full output vector for the same seed/settings/model
+
+### Canonical-vs-ggml harness
+- Script: `uv run scripts/eval_kugelaudio_divergence.py --config tests/fixtures/kugelaudio_eval_config.json --execute <none|canonical|ggml|both>`
+- Plan mode: `./scripts/eval_kugelaudio_divergence.py --config ... --execute none`
+  - Does not require model artifacts; validate config plumbing and command shapes only
+- Execution mode: `./scripts/eval_kugelaudio_divergence.py --config ... --execute both --write-plan /tmp/plan.json`
+  - Writes `plan.json` and `results.json` (return codes and output hashes) to the config-defined `output_dir`
+  - Canonical side runs inline Python in the `../kugelaudio-open` checkout
+  - ggml side runs `vibevoice-cli tts --model ... --ref-audio ... --text ...` with CPU backend forced
 - `tests/test_kugelaudio_generation_tokens.cpp`
 - `tests/test_kugelaudio_reused_components.cpp`
 - `tests/test_kugelaudio_reuse_coverage.cpp`
