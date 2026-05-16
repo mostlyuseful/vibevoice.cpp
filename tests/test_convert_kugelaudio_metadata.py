@@ -95,12 +95,61 @@ class FakeGGUFModule:
 
 
 class ConverterTests(unittest.TestCase):
+    def test_required_tensor_contract_covers_v1_tts_path(self):
+        required = MOD.required_tensor_names_for_variant(KUGEL_7B_CFG, "kugelaudio-0-open")
+        for name in [
+            "lm.tok_embd.weight",
+            "lm.output_norm.weight",
+            "lm_head.weight",
+            "dh.cond_proj",
+            "at.dec.head.weight",
+            "at.enc.head.weight",
+            "st.enc.head.weight",
+            "sc.fc1.weight",
+            "speech.scaling",
+        ]:
+            self.assertIn(name, required)
+
+    def test_validate_required_tensors_rejects_missing_v1_tts_tensor(self):
+        required = MOD.required_tensor_names_for_variant(KUGEL_7B_CFG, "kugelaudio-0-open")
+        present = [name for name in required if name != "sc.fc1.weight"]
+        with self.assertRaisesRegex(ValueError, "sc.fc1.weight"):
+            MOD.validate_required_tensors(KUGEL_7B_CFG, "kugelaudio-0-open", present)
+
     def test_detects_supported_kugelaudio_open_signature(self):
         self.assertEqual(MOD.detect_variant(KUGEL_7B_CFG, []), "kugelaudio-0-open")
 
     def test_rejects_other_kugelaudio_variants_for_v1(self):
         with self.assertRaisesRegex(ValueError, "only kugelaudio/kugelaudio-0-open"):
             MOD.detect_variant(KUGEL_15B_CFG, [])
+
+    def test_convert_rejects_missing_required_kugelaudio_tensors(self):
+        fake_tensors = {
+            "model.language_model.embed_tokens.weight": np.zeros((2, 2), dtype=np.float32),
+            "model.speech_scaling_factor": np.array(1.0, dtype=np.float32),
+            "model.speech_bias_factor": np.array(0.0, dtype=np.float32),
+        }
+
+        def fake_safe_open(_path, framework="pt"):
+            self.assertEqual(framework, "pt")
+            return FakeSafeOpen(fake_tensors)
+
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            out = Path(td) / "out.gguf"
+            src.mkdir()
+            (src / "config.json").write_text(json.dumps(KUGEL_7B_CFG))
+            (src / "model.safetensors").write_bytes(b"stub")
+            rc = MOD.convert_checkpoint(
+                src,
+                out,
+                strict=True,
+                dtype="fp32",
+                gguf_module=FakeGGUFModule(),
+                safe_open_fn=fake_safe_open,
+            )
+
+        self.assertEqual(rc, 5)
 
     def test_convert_emits_explicit_kugelaudio_metadata_contract(self):
         fake_tensors = {
@@ -120,14 +169,19 @@ class ConverterTests(unittest.TestCase):
             (src / "config.json").write_text(json.dumps(KUGEL_7B_CFG))
             (src / "model.safetensors").write_bytes(b"stub")
 
-            rc = MOD.convert_checkpoint(
-                src,
-                out,
-                strict=True,
-                dtype="fp32",
-                gguf_module=FakeGGUFModule(),
-                safe_open_fn=fake_safe_open,
-            )
+            orig_validate = MOD.validate_required_tensors
+            MOD.validate_required_tensors = lambda cfg, variant, tensor_names: None
+            try:
+                rc = MOD.convert_checkpoint(
+                    src,
+                    out,
+                    strict=True,
+                    dtype="fp32",
+                    gguf_module=FakeGGUFModule(),
+                    safe_open_fn=fake_safe_open,
+                )
+            finally:
+                MOD.validate_required_tensors = orig_validate
 
         self.assertEqual(rc, 0)
         writer = FakeWriter.last_instance

@@ -30,3 +30,11 @@
   - create a brand-new schema-only doc immediately: cleaner separation, but adds another place to keep in sync during rapid migration
   - document only in converter source comments: too discoverability-poor for future agents working from docs first
 - Affected area: `prd.md` Slice 1 / "The schema is documented well enough that a future agent can add validation without re-deriving intent.".
+
+### KugelAudio converter required-tensor gate
+- Context: the next PRD increment requires proving that all tensors needed by the v1 TTS path are either mapped or rejected clearly, but the spec does not enumerate the exact converter-side minimum set.
+- Chosen default: use the current raw-reference TTS loader path (`vibevoice_load` normalized onto the existing `1.5b` branch) as the authoritative required tensor set for converter validation.
+- Rejected alternatives:
+  - validate against every remappable tensor in the checkpoint: too broad for the v1 acceptance path and harder to keep aligned with runtime reality
+  - validate only metadata plus a few anchor tensors: too weak to guarantee end-to-end TTS loadability
+- Affected area: `prd.md` Slice 1 / "Map all required TTS tensors and metadata".

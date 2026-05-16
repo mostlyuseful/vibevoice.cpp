@@ -40,7 +40,7 @@ Testing:
 Implement the Qwen backbone, diffusion head, acoustic tokenizer/decoder, semantic tokenizer, connectors, scaling/bias, and special-token assumptions required for the supported path.
 
 AC:
-- [ ] All tensors needed by the v1 TTS path are mapped or intentionally rejected.
+- [x] All tensors needed by the v1 TTS path are mapped or intentionally rejected.
 - [ ] Semantic-conditioning-related tensors are included for the supported path.
 - [ ] Missing required tensors fail fast with actionable diagnostics.
 

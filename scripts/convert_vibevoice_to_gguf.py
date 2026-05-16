@@ -294,6 +294,139 @@ def detect_variant(cfg: dict[str, Any], remapped_tensor_names: list[str]) -> str
     return cfg.get("model_type", "vibevoice")
 
 
+def _append_qwen_stack_requirements(out: list[str], prefix: str, n_layers: int) -> None:
+    out.append(f"{prefix}.tok_embd.weight")
+    for i in range(n_layers):
+        base = f"{prefix}.blk.{i}."
+        out.extend([
+            base + "attn_q.weight",
+            base + "attn_q.bias",
+            base + "attn_k.weight",
+            base + "attn_k.bias",
+            base + "attn_v.weight",
+            base + "attn_v.bias",
+            base + "attn_o.weight",
+            base + "attn_norm.weight",
+            base + "ffn_norm.weight",
+            base + "ffn_gate.weight",
+            base + "ffn_up.weight",
+            base + "ffn_down.weight",
+        ])
+
+
+def _append_block1d_requirements(out: list[str], prefix: str) -> None:
+    out.extend([
+        prefix + ".weight.norm",
+        prefix + ".weight.ffn_norm",
+        prefix + ".weight.mixer_weight",
+        prefix + ".weight.mixer_bias",
+        prefix + ".weight.gamma",
+        prefix + ".weight.ffn_gamma",
+        prefix + ".weight.ffn_linear1",
+        prefix + ".weight.ffn_linear1_bias",
+        prefix + ".weight.ffn_linear2",
+        prefix + ".weight.ffn_linear2_bias",
+    ])
+
+
+def _append_encoder_requirements(out: list[str], prefix: str, depths: list[int], n_downs: int) -> None:
+    out.extend([f"{prefix}.stem.weight", f"{prefix}.stem.bias"])
+    for i in range(1, n_downs + 1):
+        out.extend([f"{prefix}.down_{i}.weight", f"{prefix}.down_{i}.bias"])
+    for stage_i, depth in enumerate(depths):
+        for block_i in range(depth):
+            _append_block1d_requirements(out, f"{prefix}.stage_{stage_i}_block_{block_i}")
+    out.extend([f"{prefix}.head.weight", f"{prefix}.head.bias"])
+
+
+def _append_decoder_requirements(out: list[str], prefix: str, depths: list[int], n_ups: int) -> None:
+    out.extend([f"{prefix}.stem.weight", f"{prefix}.stem.bias"])
+    for i in range(1, n_ups + 1):
+        out.extend([f"{prefix}.up_{i}.weight", f"{prefix}.up_{i}.bias"])
+    for stage_i, depth in enumerate(depths):
+        for block_i in range(depth):
+            _append_block1d_requirements(out, f"{prefix}.stage_{stage_i}_block_{block_i}")
+    out.extend([f"{prefix}.head.weight", f"{prefix}.head.bias"])
+
+
+def _append_diffusion_head_requirements(out: list[str], head_layers: int) -> None:
+    out.extend([
+        "dh.noisy_proj",
+        "dh.cond_proj",
+        "dh.t_embed_lin1",
+        "dh.t_embed_lin2",
+        "dh.final.proj",
+        "dh.final.adaln",
+    ])
+    for i in range(head_layers):
+        out.extend([
+            f"dh.layer_{i}.norm",
+            f"dh.layer_{i}.adaln",
+            f"dh.layer_{i}.ffn_gate",
+            f"dh.layer_{i}.ffn_up",
+            f"dh.layer_{i}.ffn_down",
+        ])
+
+
+def required_tensor_names_for_variant(cfg: dict[str, Any], variant: str) -> list[str]:
+    if variant != "kugelaudio-0-open":
+        return []
+
+    dec = cfg["decoder_config"]
+    ac = cfg["acoustic_tokenizer_config"]
+    sm = cfg.get("semantic_tokenizer_config") or ac
+    dh = cfg.get("diffusion_head_config") or {}
+
+    n_total = dec["num_hidden_layers"]
+    n_tts_layers = cfg.get("tts_backbone_num_hidden_layers", 0) or 0
+    n_lm_layers = n_total - n_tts_layers
+    ac_enc_depths = _split_depths(ac["encoder_depths"])
+    ac_dec_depths = _split_depths(ac.get("decoder_depths") or list(reversed(ac_enc_depths)))
+    sm_enc_depths = _split_depths(sm.get("encoder_depths") or ac_enc_depths)
+    head_layers = int(dh.get("head_layers", 4))
+    n_downs = len(ac["encoder_ratios"])
+    n_sem_downs = len(sm.get("encoder_ratios") or ac["encoder_ratios"])
+    n_ups = len(ac["encoder_ratios"])
+
+    required: list[str] = []
+    _append_qwen_stack_requirements(required, "lm", n_lm_layers)
+    required.extend([
+        "lm.output_norm.weight",
+        "lm_head.weight",
+        "speech.scaling",
+        "speech.bias",
+        "ac.fc1.weight",
+        "ac.fc1.bias",
+        "ac.norm.weight",
+        "ac.fc2.weight",
+        "ac.fc2.bias",
+        "sc.fc1.weight",
+        "sc.fc1.bias",
+        "sc.norm.weight",
+        "sc.fc2.weight",
+        "sc.fc2.bias",
+    ])
+    _append_diffusion_head_requirements(required, head_layers)
+    _append_decoder_requirements(required, "at.dec", ac_dec_depths, n_ups)
+    _append_encoder_requirements(required, "at.enc", ac_enc_depths, n_downs)
+    _append_encoder_requirements(required, "st.enc", sm_enc_depths, n_sem_downs)
+    return required
+
+
+def validate_required_tensors(cfg: dict[str, Any], variant: str, tensor_names: list[str]) -> None:
+    required = required_tensor_names_for_variant(cfg, variant)
+    if not required:
+        return
+    present = set(tensor_names)
+    missing = [name for name in required if name not in present]
+    if missing:
+        preview = ", ".join(missing[:8])
+        raise ValueError(
+            f"missing required tensors for {variant}: {preview}"
+            + (" ..." if len(missing) > 8 else "")
+        )
+
+
 def add_metadata(writer: Any, cfg: dict[str, Any], variant: str) -> None:
     dec = cfg["decoder_config"]
     ac = cfg["acoustic_tokenizer_config"]
@@ -413,6 +546,12 @@ def convert_checkpoint(
             sys.stderr.write("error: 1.5b variant missing lm.tok_embd.weight; cannot synthesise tied lm_head\n")
             return 4
         tensors.append(("lm_head.weight", embd))
+
+    try:
+        validate_required_tensors(cfg, variant, [name for name, _ in tensors])
+    except ValueError as e:
+        sys.stderr.write(f"error: {e}\n")
+        return 5
 
     out.parent.mkdir(parents=True, exist_ok=True)
     writer = gguf_module.GGUFWriter(str(out), arch="vibevoice")
