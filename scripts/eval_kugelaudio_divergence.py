@@ -11,6 +11,7 @@ be checked in, reviewed, and replayed later.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -101,16 +102,27 @@ def normalize_config(cfg: dict[str, Any], config_path: Path) -> dict[str, Any]:
     return norm
 
 
+def maybe_sha256(path_value: str) -> str | None:
+    p = Path(path_value)
+    if not p.exists() or not p.is_file():
+        return None
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def build_canonical_inline_code(plan: dict[str, Any]) -> str:
     # Keep the inline script compact but explicit so the generated command is
     # self-contained and replayable from the saved plan.
-    text = json.dumps(plan["inputs"]["text"])
-    ref = json.dumps(plan["inputs"]["reference_audio"])
+    text = json.dumps(plan["shared_run"]["text"])
+    ref = json.dumps(plan["shared_run"]["reference_audio"]["path"])
     model = json.dumps(plan["canonical"]["model"])
     out = json.dumps(plan["canonical"]["output_wav"])
-    cfg = repr(plan["generation"]["cfg_scale"])
-    max_new = repr(plan["generation"]["max_new_tokens"])
-    seed = repr(plan["generation"]["seed"])
+    cfg = repr(plan["shared_run"]["generation"]["cfg_scale"])
+    max_new = repr(plan["shared_run"]["generation"]["max_new_tokens"])
+    seed = repr(plan["shared_run"]["generation"]["seed"])
     return (
         "import torch; "
         "from kugelaudio_open.utils.generation import load_model_and_processor, generate_speech; "
@@ -129,6 +141,20 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
     ggml_log = str((out_dir / "ggml.log").resolve())
 
     plan = {
+        "shared_run": {
+            "text": cfg["text"],
+            "reference_audio": {
+                "path": cfg["reference_audio"],
+                "sha256": maybe_sha256(cfg["reference_audio"]),
+            },
+            "generation": {
+                "seed": cfg["seed"],
+                "cfg_scale": cfg["cfg_scale"],
+                "steps": cfg["steps"],
+                "max_frames": cfg["max_frames"],
+                "max_new_tokens": cfg["max_new_tokens"],
+            },
+        },
         "canonical": {
             "repo": cfg["canonical_repo"],
             "model": cfg["canonical_model"],
@@ -142,17 +168,6 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
             "output_wav": ggml_out,
             "log_path": ggml_log,
         },
-        "inputs": {
-            "text": cfg["text"],
-            "reference_audio": cfg["reference_audio"],
-        },
-        "generation": {
-            "seed": cfg["seed"],
-            "cfg_scale": cfg["cfg_scale"],
-            "steps": cfg["steps"],
-            "max_frames": cfg["max_frames"],
-            "max_new_tokens": cfg["max_new_tokens"],
-        },
     }
     plan["canonical"]["command"] = [
         "uv", "run", "python", "-c", build_canonical_inline_code(plan),
@@ -162,13 +177,13 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
         "tts",
         "--model", cfg["ggml_model"],
         "--tokenizer", cfg["ggml_tokenizer"],
-        "--ref-audio", cfg["reference_audio"],
-        "--text", cfg["text"],
+        "--ref-audio", plan["shared_run"]["reference_audio"]["path"],
+        "--text", plan["shared_run"]["text"],
         "--out", ggml_out,
-        "--max-frames", str(cfg["max_frames"]),
-        "--steps", str(cfg["steps"]),
-        "--cfg", str(cfg["cfg_scale"]),
-        "--seed", str(cfg["seed"]),
+        "--max-frames", str(plan["shared_run"]["generation"]["max_frames"]),
+        "--steps", str(plan["shared_run"]["generation"]["steps"]),
+        "--cfg", str(plan["shared_run"]["generation"]["cfg_scale"]),
+        "--seed", str(plan["shared_run"]["generation"]["seed"]),
     ]
     return plan
 

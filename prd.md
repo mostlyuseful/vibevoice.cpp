@@ -209,7 +209,7 @@ Create a reproducible evaluation path comparing this runtime to `../kugelaudio-o
 
 AC:
 - [x] Evaluation setup is scripted and reproducible.
-- [ ] Inputs/settings are pinned and shared between canonical and ggml runs.
+- [x] Inputs/settings are pinned and shared between canonical and ggml runs.
 - [ ] Results are logged in a form suitable for regression checks.
 
 Testing:

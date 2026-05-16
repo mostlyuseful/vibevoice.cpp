@@ -286,3 +286,11 @@
   - require all model artifacts even for setup/plan validation: stronger, but too heavy for routine script-level testing
   - encode the evaluation setup only as shell snippets in docs: less reproducible and harder to validate mechanically
 - Affected area: `prd.md` Slice 4 / "Evaluation setup is scripted and reproducible.".
+
+### KugelAudio shared eval-run contract
+- Context: the next Slice 4 item requires inputs/settings to be pinned and shared between canonical and ggml runs, not merely present twice in separate command blocks.
+- Chosen default: emit one explicit `shared_run` block in the normalized eval plan and derive both canonical and ggml commands from it; include a reference-audio SHA256 when the file exists so reruns can confirm they used the same artifact.
+- Rejected alternatives:
+  - keep duplicating values independently inside each command only: workable, but weaker as an auditable shared contract
+  - require all artifact hashes unconditionally: stronger, but incompatible with the dry-run/allow-missing-artifacts plan mode
+- Affected area: `prd.md` Slice 4 / "Inputs/settings are pinned and shared between canonical and ggml runs.".
