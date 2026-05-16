@@ -172,7 +172,8 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
 - Logging contract:
   - Converter: `convert: mode=kugelaudio checkpoint=... src=...` shows the mode and source
   - CLI TTS: `tts: model_variant=... kugelaudio=... quantization_hint=...` + `tts: generation_settings frames=... steps=... cfg=... seed=... conditioning=... ref_count=...`
-  - Eval harness: startup log with `eval: config=... execute=... text=... ref=... generation seed=... cfg=... steps=... max_frames=... canonical_model=... ggml_model=...`
+  - Eval harness: startup log with `eval: config=... execute=... text_summary=chars=... sha256=... ref_summary=present=... sha256=... generation seed=... cfg=... steps=... max_frames=... canonical_model=... ggml_model=...`
+  - By default, raw prompt text and raw audio paths are not emitted; logs use length/hash summaries instead
 - Quantization: use `scripts/quantize_gguf.py --src f16.gguf --out q8_0.gguf --type q8_0` to produce the q8_0 artifact from a converted f16 model
 
 ### ASR assumptions for closed-loop eval

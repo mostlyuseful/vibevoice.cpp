@@ -271,7 +271,7 @@ Make failures explicit and logs useful enough to debug converter, loader, prompt
 AC:
 - [x] Converter, loader, conditioning, and unsupported-feature errors are clear and actionable.
 - [x] Logs include checkpoint/config, converter mode, active conditioning, quantization mode, and eval configuration.
-- [ ] Sensitive prompt/audio contents are not dumped by default.
+- [x] Sensitive prompt/audio contents are not dumped by default.
 
 Testing:
 - Unit: error-path formatting where practical.

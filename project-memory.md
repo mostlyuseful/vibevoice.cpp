@@ -370,3 +370,11 @@
   - only log in verbose mode: misses the PRD requirement for these to be visible by default for operator diagnostics
 - Affected area: `prd.md` Slice 5 / "Logs include checkpoint/config, converter mode, active conditioning, quantization mode, and eval configuration.".
 
+
+### KugelAudio log redaction default
+- Context: the next Slice 5 item requires that sensitive prompt/audio contents are not dumped by default, but the eval harness startup log was printing the full prompt text and raw reference-audio path.
+- Chosen default: keep default logs useful while redacting contents. The eval harness now logs `text_summary=chars=... sha256=...` and `ref_summary=present=... sha256=...` instead of raw text/path. Raw content remains available only in explicit plan/results artifacts, not default stderr summaries.
+- Rejected alternatives:
+  - remove prompt/audio-related logging entirely: safer, but weaker for operators debugging eval mismatches
+  - keep full prompt/path logging and rely on a future verbose/redaction flag: violates the default-safety requirement
+- Affected area: `prd.md` Slice 5 / "Sensitive prompt/audio contents are not dumped by default.".

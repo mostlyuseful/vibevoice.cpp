@@ -121,6 +121,17 @@ def maybe_sha256(path_value: str) -> str | None:
     return h.hexdigest()
 
 
+def summarize_text_for_log(text: str) -> str:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return f"chars={len(text)} sha256={digest}"
+
+
+def summarize_reference_for_log(path_value: str, sha256_value: str | None) -> str:
+    if sha256_value:
+        return f"present=yes sha256={sha256_value[:16]}"
+    return f"present={Path(path_value).exists()} sha256=<missing>"
+
+
 def build_canonical_inline_code(plan: dict[str, Any]) -> str:
     # Keep the inline script compact but explicit so the generated command is
     # self-contained and replayable from the saved plan.
@@ -354,7 +365,8 @@ def main() -> int:
 
     sys.stderr.write(
         f"eval: config={config_path} execute={args.execute}\n"
-        f"eval: text={json.dumps(plan['shared_run']['text'])} ref={plan['shared_run']['reference_audio']['path']}\n"
+        f"eval: text_summary={summarize_text_for_log(plan['shared_run']['text'])} "
+        f"ref_summary={summarize_reference_for_log(plan['shared_run']['reference_audio']['path'], plan['shared_run']['reference_audio']['sha256'])}\n"
         f"eval: generation seed={plan['shared_run']['generation']['seed']} "
         f"cfg={plan['shared_run']['generation']['cfg_scale']} "
         f"steps={plan['shared_run']['generation']['steps']} "
