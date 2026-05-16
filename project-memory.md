@@ -352,3 +352,11 @@
   - add a heavy end-to-end ASR integration test: already covered by the harness execution path; repeating it as a separate test would be redundant
   - document ASR assumptions only in code comments: less discoverable for future evaluators
 - Affected area: `prd.md` Slice 4 / "Existing ASR code is reused where it keeps the eval path simple." and related sub-task items.
+
+### KugelAudio error clarity validation
+- Context: the next Slice 5 item requires converter, loader, conditioning, and unsupported-feature errors to be clear and actionable, but there's no systematic validation of error message content beyond checking that errors are raised.
+- Chosen default: add `tests/test_kugelaudio_error_clarity.py` which validates that harness threshold failure messages explicitly name the violated boundary (ratio or floor), and that the supported-checkpoint name appears in converter unsupported-checkpoint errors. Run this alongside the existing feature-gating, CLI rejection, and CAPI tests that already exercise the error paths.
+- Rejected alternatives:
+  - write a C++ stderr-capture test for loader errors: more complex and fragile than validating the Python-side messages that developers will see in practice
+  - manually audit every error string: not repeatable as a regression check
+- Affected area: `prd.md` Slice 5 / "Converter, loader, conditioning, and unsupported-feature errors are clear and actionable.".

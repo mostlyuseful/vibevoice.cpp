@@ -269,7 +269,7 @@ Deliver a safer day-2 development experience: better failures, clearer logs, and
 Make failures explicit and logs useful enough to debug converter, loader, prompt, and eval issues without re-deriving context.
 
 AC:
-- [ ] Converter, loader, conditioning, and unsupported-feature errors are clear and actionable.
+- [x] Converter, loader, conditioning, and unsupported-feature errors are clear and actionable.
 - [ ] Logs include checkpoint/config, converter mode, active conditioning, quantization mode, and eval configuration.
 - [ ] Sensitive prompt/audio contents are not dumped by default.
 
