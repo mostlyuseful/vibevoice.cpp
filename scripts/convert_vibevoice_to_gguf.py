@@ -413,6 +413,47 @@ def required_tensor_names_for_variant(cfg: dict[str, Any], variant: str) -> list
     return required
 
 
+def _tensor_family(name: str) -> str:
+    if name.startswith("lm.") or name == "lm_head.weight":
+        return "language_model"
+    if name.startswith("dh."):
+        return "diffusion_head"
+    if name.startswith("at.dec."):
+        return "acoustic_decoder"
+    if name.startswith("at.enc."):
+        return "acoustic_encoder"
+    if name.startswith("st.enc."):
+        return "semantic_encoder"
+    if name.startswith("sc."):
+        return "semantic_connector"
+    if name.startswith("ac."):
+        return "acoustic_connector"
+    if name.startswith("speech."):
+        return "speech_scalars"
+    return "other"
+
+
+def format_missing_tensor_diagnostics(variant: str, missing: list[str]) -> str:
+    families: dict[str, list[str]] = {}
+    for name in missing:
+        families.setdefault(_tensor_family(name), []).append(name)
+
+    family_summary = ", ".join(
+        f"{family}={len(names)}" for family, names in sorted(families.items())
+    )
+    examples = []
+    for family, names in sorted(families.items()):
+        preview = ", ".join(names[:3])
+        suffix = " ..." if len(names) > 3 else ""
+        examples.append(f"{family}: {preview}{suffix}")
+
+    return (
+        f"missing required tensors for {variant} "
+        f"({len(missing)} total; {family_summary}). "
+        f"Examples -> {'; '.join(examples)}"
+    )
+
+
 def validate_required_tensors(cfg: dict[str, Any], variant: str, tensor_names: list[str]) -> None:
     required = required_tensor_names_for_variant(cfg, variant)
     if not required:
@@ -420,11 +461,7 @@ def validate_required_tensors(cfg: dict[str, Any], variant: str, tensor_names: l
     present = set(tensor_names)
     missing = [name for name in required if name not in present]
     if missing:
-        preview = ", ".join(missing[:8])
-        raise ValueError(
-            f"missing required tensors for {variant}: {preview}"
-            + (" ..." if len(missing) > 8 else "")
-        )
+        raise ValueError(format_missing_tensor_diagnostics(variant, missing))
 
 
 def resolve_semantic_config(cfg: dict[str, Any]) -> dict[str, Any]:

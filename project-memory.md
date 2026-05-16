@@ -46,3 +46,11 @@
   - require `semantic_tokenizer_config` to be present in JSON: would reject the actual published checkpoint format
   - omit semantic metadata entirely when the config omits it: would make future validation and loader behavior more ambiguous even though semantic tensors are required
 - Affected area: `prd.md` Slice 1 / semantic-conditioning tensor and metadata coverage.
+
+### KugelAudio missing-tensor diagnostics format
+- Context: the converter already failed on missing required tensors, but the next PRD increment requires those failures to be actionable rather than a flat truncated list.
+- Chosen default: group missing required tensors by runtime-relevant family (`lm`, `diffusion_head`, `acoustic_decoder`, `acoustic_encoder`, `semantic_encoder`, `semantic_connector`, etc.) and include both a family summary and a short example list in the error.
+- Rejected alternatives:
+  - emit the full raw missing-tensor list only: technically complete, but too noisy for large failures
+  - report only the first missing tensor: compact, but not actionable enough for converter/debug work
+- Affected area: `prd.md` Slice 1 / "Missing required tensors fail fast with actionable diagnostics.".

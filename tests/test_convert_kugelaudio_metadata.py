@@ -119,8 +119,23 @@ class ConverterTests(unittest.TestCase):
     def test_validate_required_tensors_rejects_missing_v1_tts_tensor(self):
         required = MOD.required_tensor_names_for_variant(KUGEL_7B_CFG, "kugelaudio-0-open")
         present = [name for name in required if name != "sc.fc1.weight"]
-        with self.assertRaisesRegex(ValueError, "sc.fc1.weight"):
+        with self.assertRaisesRegex(ValueError, r"semantic_connector=1"):
             MOD.validate_required_tensors(KUGEL_7B_CFG, "kugelaudio-0-open", present)
+
+    def test_missing_tensor_diagnostics_are_grouped_and_actionable(self):
+        msg = MOD.format_missing_tensor_diagnostics(
+            "kugelaudio-0-open",
+            [
+                "sc.fc1.weight",
+                "st.enc.head.weight",
+                "st.enc.head.bias",
+                "dh.cond_proj",
+            ],
+        )
+        self.assertIn("semantic_connector=1", msg)
+        self.assertIn("semantic_encoder=2", msg)
+        self.assertIn("diffusion_head=1", msg)
+        self.assertIn("Examples ->", msg)
 
     def test_detects_supported_kugelaudio_open_signature(self):
         self.assertEqual(MOD.detect_variant(KUGEL_7B_CFG, []), "kugelaudio-0-open")
