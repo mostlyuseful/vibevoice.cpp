@@ -77,6 +77,14 @@ def main() -> int:
     if shared_ref.get("path") != str(fixture.resolve()):
         raise SystemExit("FAIL: plan did not resolve to fixture path")
 
+    voice = plan.get("voice_cloned_sample", {})
+    if voice.get("name") != "kugelaudio-0-open-hello-sine":
+        raise SystemExit("FAIL: voice_cloned_sample name mismatch")
+    if not voice.get("ground_truth"):
+        raise SystemExit("FAIL: voice_cloned_sample missing ground_truth path")
+    if str(Path(voice["ground_truth"]).name) != "canonical.wav":
+        raise SystemExit("FAIL: voice_cloned_sample ground_truth filename unexpected")
+
     print("KugelAudio eval fixture OK")
     return 0
 

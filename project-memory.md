@@ -288,6 +288,14 @@
   - commit a generic existing WAV unmodified: might lack clear known-good properties for regression testing
 - Affected area: `prd.md` Slice 4 / "At least one reproducible reference sample is defined.".
 
+### KugelAudio voice-cloned sample shape
+- Context: the next Slice 4 item requires a reproducible voice-cloned sample (the canonical TTS output against which ggml is compared), but the repo cannot generate the actual output without the real model checkpoint.
+- Chosen default: define the voice-cloned sample explicitly in the eval config as `voice_cloned_sample` with a stable name, description, and the exact input tuple. The harness plan exposes a `voice_cloned_sample.ground_truth` pointing to the canonical output path (`canonical.wav`). The actual ground-truth WAV is produced during a real canonical run and its SHA256 is recorded in `results.json`.
+- Rejected alternatives:
+  - commit a pre-generated canonical WAV to the repo: too large and tied to a specific canonical version
+  - treat the canonical output as an implicit side effect with no named concept: weaker for regression and harder to explain to a fresh developer
+- Affected area: `prd.md` Slice 4 / "At least one reproducible voice-cloned sample is defined.".
+
 ### KugelAudio eval setup config + plan mode
 - Context: the first Slice 4 item requires the canonical-vs-ggml evaluation setup to be scripted and reproducible, but the repo cannot assume large model artifacts are always present during routine local validation.
 - Chosen default: define the eval setup around one JSON config file plus a `--plan` dry-run mode in the harness script; `--plan` may be used with `--allow-missing-artifacts` for hermetic validation, while real execution still validates required artifacts.

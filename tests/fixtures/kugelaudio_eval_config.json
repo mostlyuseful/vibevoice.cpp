@@ -1,5 +1,15 @@
 {
   "comment": "Evaluation fixture config for KugelAudio v1 acceptance. All paths are relative to this file.",
+  "voice_cloned_sample": {
+    "name": "kugelaudio-0-open-hello-sine",
+    "text": "Hello world.",
+    "reference_audio": "reference_sine.wav",
+    "seed": 12345,
+    "cfg_scale": 1.0,
+    "steps": 8,
+    "max_frames": 32,
+    "description": "Ground-truth canonical output produced by kugelaudio/kugelaudio-0-open with the reference_sine.wav fixture. This is the voice-cloned acceptance sample against which ggml output is compared."
+  },
   "canonical_repo": "../../../kugelaudio-open",
   "canonical_model": "kugelaudio/kugelaudio-0-open",
   "ggml_cli": "../../build/bin/vibevoice-cli",

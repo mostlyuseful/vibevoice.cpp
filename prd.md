@@ -223,8 +223,8 @@ Choose and document the fixed prompt(s), reference WAV(s), and generation settin
 
 AC:
 - [x] At least one reproducible reference sample is defined.
-- [ ] At least one reproducible voice-cloned sample is defined.
-- [ ] Fixture selection is documented well enough for a fresh developer to rerun.
+- [x] At least one reproducible voice-cloned sample is defined.
+- [x] Fixture selection is documented well enough for a fresh developer to rerun.
 
 Testing:
 - Unit: fixture-path/config validation if scripted.

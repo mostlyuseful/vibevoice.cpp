@@ -123,6 +123,29 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
 
 ## Evaluation fixtures and harness setup
 
+### Voice-cloned acceptance sample
+- Name: `kugelaudio-0-open-hello-sine` (defined in `tests/fixtures/kugelaudio_eval_config.json` under `voice_cloned_sample`)
+- Input tuple:
+  - Text: `Hello world.`
+  - Reference audio: `tests/fixtures/reference_sine.wav`
+  - Seed: `12345`
+  - CFG scale: `1.0`, steps: `8`, max_frames: `32`
+- Ground truth: the `canonical.wav` output produced by the canonical PyTorch run with the above tuple
+- Usage: when executing the harness with `--execute both`, the `results.json` records the SHA256 of the canonical output. Future ggml runs should produce an output whose metrics (e.g., closed-loop ASR recall) meet the acceptance threshold relative to this ground truth.
+
+### How to rerun the fixture setup from a clean checkout
+1. Ensure `../kugelaudio-open` is checked out alongside this repo (the harness uses `../../../kugelaudio-open` as the canonical repo)
+2. (Re-)generate the reference audio fixture if needed: `uv run scripts/generate_eval_fixture.py`
+3. Verify fixture wiring without model artifacts: `uv run tests/test_kugelaudio_eval_fixture.py`
+4. Verify plan plumbing: `uv run tests/test_kugelaudio_eval_plan.py`
+5. To actually execute the canonical-vs-ggml comparison, first convert a KugelAudio checkpoint to GGUF (see `docs/conversion.md`), then run:
+   ```bash
+   uv run scripts/eval_kugelaudio_divergence.py \
+     --config tests/fixtures/kugelaudio_eval_config.json \
+     --execute both
+   ```
+   This writes `plan.json` and `results.json` into the config-defined `output_dir`.
+
 ### Reference audio fixture
 - File: `tests/fixtures/reference_sine.wav`
 - Properties: 24 kHz, mono, 16-bit PCM, 3.0 s, 440 Hz sine @ -18 dBFS

@@ -103,6 +103,7 @@ def normalize_config(cfg: dict[str, Any], config_path: Path) -> dict[str, Any]:
         raise ValueError("max_frames must be > 0")
     if norm["max_new_tokens"] <= 0:
         raise ValueError("max_new_tokens must be > 0")
+    norm["voice_cloned_sample"] = cfg.get("voice_cloned_sample", {})
     return norm
 
 
@@ -189,6 +190,11 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
         "--cfg", str(plan["shared_run"]["generation"]["cfg_scale"]),
         "--seed", str(plan["shared_run"]["generation"]["seed"]),
     ]
+    plan["voice_cloned_sample"] = {
+        "name": cfg.get("voice_cloned_sample", {}).get("name", ""),
+        "description": cfg.get("voice_cloned_sample", {}).get("description", ""),
+        "ground_truth": canonical_out,
+    }
     return plan
 
 
