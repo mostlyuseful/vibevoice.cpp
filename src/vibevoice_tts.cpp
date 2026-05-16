@@ -1207,6 +1207,24 @@ int tts_15b_generate(VibeVoiceModel*            model,
                      model->variant.c_str());
         return -1;
     }
+
+    const bool is_kugelaudio = model->loader.has_key("kugelaudio.architecture");
+    if (is_kugelaudio) {
+        if (p.voice) {
+            VV_LOG_ERROR("tts_15b: KugelAudio v1 does not support pre-baked voice gguf conditioning; use exactly one raw reference audio input");
+            return -20;
+        }
+        if (p.ref_audio_paths.size() != 1) {
+            VV_LOG_ERROR("tts_15b: KugelAudio v1 requires exactly one raw reference audio input; got %zu",
+                         p.ref_audio_paths.size());
+            return -21;
+        }
+        if (text_has_speaker_prefix(text)) {
+            VV_LOG_ERROR("tts_15b: KugelAudio v1 does not support speaker-tagged / multi-speaker dialog input");
+            return -22;
+        }
+    }
+
     if (!model->tokenizer.vocab_size()) {
         VV_LOG_ERROR("tts_15b: tokenizer not loaded");
         return -2;

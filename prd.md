@@ -68,7 +68,7 @@ Testing:
 Add explicit gating for v1-only support: single checkpoint, single-speaker, raw-reference path only.
 
 AC:
-- [ ] Unsupported features are rejected before inference starts.
+- [x] Unsupported features are rejected before inference starts.
 - [ ] Error text distinguishes unsupported model/schema from unsupported runtime feature usage.
 - [ ] Logs state what was detected and what is enabled.
 

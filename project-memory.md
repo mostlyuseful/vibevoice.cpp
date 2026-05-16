@@ -70,3 +70,11 @@
   - keep relying on numeric fallback defaults (`64`, `24000`, etc.): simpler, but makes missing-schema cases load ambiguously
   - require every possible legacy and canonical key pair: over-constrains migration when canonical `kugelaudio.*` alone is sufficient
 - Affected area: `prd.md` Slice 1 / "Loader behavior is deterministic and does not depend on implicit old VibeVoice defaults.".
+
+### KugelAudio v1 feature-gating scope
+- Context: the next PRD item requires unsupported features to fail before inference starts, but this repo still carries legacy VibeVoice 1.5B multi-speaker tests and surfaces that should not be broken while adding KugelAudio-specific gating.
+- Chosen default: apply v1 feature gates only when the loaded model carries KugelAudio metadata, not to every runtime path normalized onto the existing `1.5b` branch.
+- Rejected alternatives:
+  - gate all `1.5b` models identically: simpler, but would regress legacy VibeVoice 1.5B capabilities and tests
+  - postpone all gating to CLI only: too late for the PRD item, which requires rejection before inference starts in the runtime path
+- Affected area: `prd.md` Slice 1 / "Unsupported features are rejected before inference starts.".
