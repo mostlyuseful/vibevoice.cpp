@@ -81,6 +81,11 @@ def main() -> int:
     if results["canonical"]["output_sha256"] is not None or results["ggml"]["output_sha256"] is not None:
         raise SystemExit("FAIL: planned results template should not have output hashes yet")
 
+    if "asr" not in plan["canonical"]["asr_command"]:
+        raise SystemExit("FAIL: canonical ASR command missing asr subcommand")
+    if plan["ggml"]["output_wav"] not in plan["ggml"]["asr_command"]:
+        raise SystemExit("FAIL: ggml ASR command does not reference ggml output wav")
+
     print("KugelAudio eval plan OK")
     return 0
 

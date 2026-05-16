@@ -111,7 +111,7 @@ Testing:
 
 ### Major Task: Implement single-reference raw-audio conditioning
 
-Use the current repo’s audio loader path, then resample to 24 kHz mono and apply canonical RMS normalization before acoustic + semantic encoding.
+Use the current repo's audio loader path, then resample to 24 kHz mono and apply canonical RMS normalization before acoustic + semantic encoding.
 
 AC:
 - [x] Raw reference audio is accepted through the runtime/CLI path supported by the repo today.
@@ -233,10 +233,10 @@ Testing:
 
 ### Major Task: Add closed-loop ASR regression as the main objective metric
 
-Use the repo’s ASR path to measure recall and enforce the v1 thresholds.
+Use the repo's ASR path to measure recall and enforce the v1 thresholds.
 
 AC:
-- [ ] Closed-loop ASR regression is automated for the acceptance path.
+- [x] Closed-loop ASR regression is automated for the acceptance path.
 - [ ] `f16` must reach at least 95% of canonical recall with a floor of 0.80.
 - [ ] `q8_0` must complete conversion, load, and end-to-end generation on the same path.
 - [ ] Failures surface enough context to distinguish model drift from harness issues.

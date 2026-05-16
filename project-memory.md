@@ -312,10 +312,19 @@
   - require all artifact hashes unconditionally: stronger, but incompatible with the dry-run/allow-missing-artifacts plan mode
 - Affected area: `prd.md` Slice 4 / "Inputs/settings are pinned and shared between canonical and ggml runs.".
 
-### KugelAudio eval results schema shape
-- Context: the next Slice 4 item requires results to be logged in a form suitable for regression checks, but full real execution may not be available during routine script validation.
-- Chosen default: define one normalized `results.json` schema now and support writing a stub/template copy of it in plan mode; real execution fills the same schema with return codes, statuses, and output hashes.
+### KugelAudio eval ASR phase + recall automation
+- Context: the next Slice 4 item requires closed-loop ASR regression to be automated, but the harness previously only planned/executed TTS, not ASR transcription or recall computation.
+- Chosen default: extend the divergence harness to include an ASR phase after successful TTS for both canonical and ggml outputs, using the repo's existing `vibevoice-cli asr` command and a word-level recall metric against the source text. The recall helper mirrors the existing C++ `test_15b_closed_loop.cpp` logic (extract `"Content":"..."` fields, compute word overlap).
 - Rejected alternatives:
-  - wait for full end-to-end execution before defining the result shape: delays the regression contract too long
-  - log only raw stdout/stderr files: useful for debugging, but too unstructured for regression comparisons
+  - add a separate standalone ASR+recall script: would fragment the acceptance path and make the harness less self-contained
+  - embed ASR inside a new C++ test only: would not integrate with the divergence harness's side-by-side comparison
+  - use an external ASR model for the canonical side: contradicts the PRD requirement to use "the repo's ASR path"
+- Affected area: `prd.md` Slice 4 / "Closed-loop ASR regression is automated for the acceptance path.".
+
+### KugelAudio eval results schema v2 (ASR fields)
+- Context: adding ASR to the harness requires new fields in the already-defined results.json schema.
+- Chosen default: add `asr_command`, `asr_log_path`, `asr_return_code`, `asr_transcript`, `recall` to both `canonical` and `ggml` blocks, keeping `schema_version = 1` since this is an additive change to the same schema version.
+- Rejected alternatives:
+  - bump schema_version to 2 for additive fields: unnecessary churn; the schema is still the same conceptual contract with more optional fields
+  - store ASR results in a separate file: harder to correlate with TTS results during regression comparisons
 - Affected area: `prd.md` Slice 4 / "Results are logged in a form suitable for regression checks.".

@@ -158,9 +158,13 @@ In short: for acceptance/regression comparisons today, force CPU first and keep 
 - Plan mode: `./scripts/eval_kugelaudio_divergence.py --config ... --execute none`
   - Does not require model artifacts; validate config plumbing and command shapes only
 - Execution mode: `./scripts/eval_kugelaudio_divergence.py --config ... --execute both --write-plan /tmp/plan.json`
-  - Writes `plan.json` and `results.json` (return codes and output hashes) to the config-defined `output_dir`
+  - Runs TTS (canonical + ggml) then ASR on both outputs, then computes word-level recall
+  - Writes `plan.json` and `results.json` (return codes, output hashes, ASR transcripts, recall) to the config-defined `output_dir`
   - Canonical side runs inline Python in the `../kugelaudio-open` checkout
-  - ggml side runs `vibevoice-cli tts --model ... --ref-audio ... --text ...` with CPU backend forced
+  - ggml side runs `vibevoice-cli tts ...` with CPU backend forced
+  - ASR side runs `vibevoice-cli asr ...` (reuses the repo's ASR model) on both WAVs
+- Acceptance metric: word-level recall against the source text
+  - ggml recall must be >= 95% of canonical recall, with absolute floor 0.80
 - `tests/test_kugelaudio_generation_tokens.cpp`
 - `tests/test_kugelaudio_reused_components.cpp`
 - `tests/test_kugelaudio_reuse_coverage.cpp`

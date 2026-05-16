@@ -86,6 +86,8 @@ def normalize_config(cfg: dict[str, Any], config_path: Path) -> dict[str, Any]:
         "ggml_cli": resolve_path(base, str(require(cfg, "ggml_cli"))),
         "ggml_model": resolve_path(base, str(require(cfg, "ggml_model"))),
         "ggml_tokenizer": resolve_path(base, str(require(cfg, "ggml_tokenizer"))),
+        "asr_model": resolve_path(base, str(cfg.get("asr_model", ""))),
+        "asr_tokenizer": resolve_path(base, str(cfg.get("asr_tokenizer", ""))),
         "reference_audio": resolve_path(base, str(require(cfg, "reference_audio"))),
         "text": str(require(cfg, "text")),
         "output_dir": out_dir,
@@ -138,12 +140,24 @@ def build_canonical_inline_code(plan: dict[str, Any]) -> str:
     )
 
 
+def build_asr_command(cfg: dict[str, Any], audio_path: str) -> list[str]:
+    return [
+        cfg["ggml_cli"],
+        "asr",
+        "--model", str(cfg.get("asr_model", "")),
+        "--tokenizer", str(cfg.get("asr_tokenizer", "")),
+        "--audio", audio_path,
+    ]
+
+
 def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
     out_dir = Path(cfg["output_dir"])
     canonical_out = str((out_dir / "canonical.wav").resolve())
     ggml_out = str((out_dir / "ggml.wav").resolve())
     canonical_log = str((out_dir / "canonical.log").resolve())
     ggml_log = str((out_dir / "ggml.log").resolve())
+    canonical_asr_log = str((out_dir / "canonical_asr.log").resolve())
+    ggml_asr_log = str((out_dir / "ggml_asr.log").resolve())
 
     plan = {
         "shared_run": {
@@ -165,6 +179,8 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
             "model": cfg["canonical_model"],
             "output_wav": canonical_out,
             "log_path": canonical_log,
+            "asr_command": build_asr_command(cfg, canonical_out),
+            "asr_log_path": canonical_asr_log,
         },
         "ggml": {
             "cli": cfg["ggml_cli"],
@@ -172,6 +188,8 @@ def build_plan(cfg: dict[str, Any]) -> dict[str, Any]:
             "tokenizer": cfg["ggml_tokenizer"],
             "output_wav": ggml_out,
             "log_path": ggml_log,
+            "asr_command": build_asr_command(cfg, ggml_out),
+            "asr_log_path": ggml_asr_log,
         },
     }
     plan["canonical"]["command"] = [
@@ -206,17 +224,27 @@ def build_results(plan: dict[str, Any]) -> dict[str, Any]:
             "command": plan["canonical"]["command"],
             "log_path": plan["canonical"]["log_path"],
             "output_wav": plan["canonical"]["output_wav"],
+            "asr_command": plan["canonical"]["asr_command"],
+            "asr_log_path": plan["canonical"]["asr_log_path"],
             "status": "planned",
             "return_code": None,
             "output_sha256": None,
+            "asr_return_code": None,
+            "asr_transcript": None,
+            "recall": None,
         },
         "ggml": {
             "command": plan["ggml"]["command"],
             "log_path": plan["ggml"]["log_path"],
             "output_wav": plan["ggml"]["output_wav"],
+            "asr_command": plan["ggml"]["asr_command"],
+            "asr_log_path": plan["ggml"]["asr_log_path"],
             "status": "planned",
             "return_code": None,
             "output_sha256": None,
+            "asr_return_code": None,
+            "asr_transcript": None,
+            "recall": None,
         },
     }
 
@@ -227,13 +255,45 @@ def write_json(path_value: str | Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def run_one(command: list[str], cwd: str, log_path: str, extra_env: dict[str, str] | None = None) -> int:
+def extract_content(raw: str) -> str:
+    """Extract the Content field(s) from the ASR JSON-like output."""
+    key = '"Content":"'
+    parts: list[str] = []
+    pos = 0
+    while True:
+        idx = raw.find(key, pos)
+        if idx == -1:
+            break
+        idx += len(key)
+        end = idx
+        while end < len(raw) and raw[end] != '"':
+            end += 2 if (raw[end] == '\\' and end + 1 < len(raw)) else 1
+        parts.append(raw[idx:end])
+        pos = end
+    return " ".join(parts)
+
+
+def word_set(s: str) -> set[str]:
+    import re
+    return set(re.sub(r"[^A-Za-z0-9]+", " ", s).lower().split())
+
+
+def compute_recall(source_text: str, transcript: str) -> float:
+    src = word_set(source_text)
+    out = word_set(extract_content(transcript))
+    if not src:
+        return 0.0
+    hits = len(src & out)
+    return hits / len(src)
+
+
+def run_one(command: list[str], cwd: str, log_path: str, extra_env: dict[str, str] | None = None) -> tuple[int, str]:
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
     with open(log_path, "w", encoding="utf-8") as logf:
         proc = subprocess.run(command, cwd=cwd, env=env, stdout=logf, stderr=subprocess.STDOUT)
-    return int(proc.returncode)
+    return int(proc.returncode), Path(log_path).read_text(encoding="utf-8") if Path(log_path).exists() else ""
 
 
 def main() -> int:
@@ -245,6 +305,8 @@ def main() -> int:
     validate_exists("ggml_cli", cfg["ggml_cli"], args.allow_missing_artifacts)
     validate_exists("ggml_model", cfg["ggml_model"], args.allow_missing_artifacts)
     validate_exists("ggml_tokenizer", cfg["ggml_tokenizer"], args.allow_missing_artifacts)
+    validate_exists("asr_model", cfg.get("asr_model"), args.allow_missing_artifacts)
+    validate_exists("asr_tokenizer", cfg.get("asr_tokenizer"), args.allow_missing_artifacts)
     validate_exists("reference_audio", cfg["reference_audio"], args.allow_missing_artifacts)
 
     plan = build_plan(cfg)
@@ -266,20 +328,37 @@ def main() -> int:
     results_path = out_dir / "results.json"
 
     failures: list[str] = []
+    source_text = plan["shared_run"]["text"]
     if args.execute in {"canonical", "both"}:
-        rc = run_one(plan["canonical"]["command"], plan["canonical"]["repo"], plan["canonical"]["log_path"])
+        rc, _ = run_one(plan["canonical"]["command"], plan["canonical"]["repo"], plan["canonical"]["log_path"])
         results["canonical"]["return_code"] = rc
         results["canonical"]["status"] = "ok" if rc == 0 else "failed"
         results["canonical"]["output_sha256"] = maybe_sha256(plan["canonical"]["output_wav"])
         if rc != 0:
             failures.append(f"canonical rc={rc}")
+        else:
+            asr_rc, asr_log = run_one(plan["canonical"]["asr_command"], str(Path(cfg["ggml_cli"]).resolve().parent.parent.parent), plan["canonical"]["asr_log_path"])
+            results["canonical"]["asr_return_code"] = asr_rc
+            results["canonical"]["asr_transcript"] = asr_log.strip() if asr_log else None
+            if asr_rc == 0:
+                results["canonical"]["recall"] = compute_recall(source_text, asr_log)
+            else:
+                failures.append(f"canonical asr rc={asr_rc}")
     if args.execute in {"ggml", "both"}:
-        rc = run_one(plan["ggml"]["command"], str(Path(cfg["ggml_cli"]).resolve().parent.parent.parent), plan["ggml"]["log_path"], {"VIBEVOICE_BACKEND": "cpu"})
+        rc, _ = run_one(plan["ggml"]["command"], str(Path(cfg["ggml_cli"]).resolve().parent.parent.parent), plan["ggml"]["log_path"], {"VIBEVOICE_BACKEND": "cpu"})
         results["ggml"]["return_code"] = rc
         results["ggml"]["status"] = "ok" if rc == 0 else "failed"
         results["ggml"]["output_sha256"] = maybe_sha256(plan["ggml"]["output_wav"])
         if rc != 0:
             failures.append(f"ggml rc={rc}")
+        else:
+            asr_rc, asr_log = run_one(plan["ggml"]["asr_command"], str(Path(cfg["ggml_cli"]).resolve().parent.parent.parent), plan["ggml"]["asr_log_path"])
+            results["ggml"]["asr_return_code"] = asr_rc
+            results["ggml"]["asr_transcript"] = asr_log.strip() if asr_log else None
+            if asr_rc == 0:
+                results["ggml"]["recall"] = compute_recall(source_text, asr_log)
+            else:
+                failures.append(f"ggml asr rc={asr_rc}")
 
     write_json(results_path, results)
 

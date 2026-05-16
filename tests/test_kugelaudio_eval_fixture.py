@@ -51,6 +51,9 @@ def main() -> int:
     if resolved != fixture.resolve():
         raise SystemExit(f"FAIL: eval config resolves to {resolved}, expected {fixture.resolve()}")
 
+    if not cfg.get("asr_model") or not cfg.get("asr_tokenizer"):
+        raise SystemExit("FAIL: eval config missing asr_model or asr_tokenizer")
+
     # Validate the harness can resolve this config in plan mode
     script = repo / "scripts" / "eval_kugelaudio_divergence.py"
     proc = subprocess.run(
