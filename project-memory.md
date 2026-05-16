@@ -166,3 +166,11 @@
   - rely only on code inspection of the inline sum: not strong enough for a repeatable acceptance check
   - add a heavy end-to-end audio-quality regression just for this item: broader and noisier than needed for the current slice
 - Affected area: `prd.md` Slice 2 / "Both acoustic and semantic conditioning are used for the supported path.".
+
+### KugelAudio v1 limitation wording
+- Context: the next conditioning-mode item requires the error text to explain the v1 limitation, not just reject invalid inputs.
+- Chosen default: standardize the shared KugelAudio conditioning error strings around one explicit supported-shape sentence: `KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text`.
+- Rejected alternatives:
+  - keep short per-case rejections only: accurate, but weaker at telling operators what *is* supported
+  - push the explanatory wording into CLI docs only: too weak for runtime/C API callers who only see the returned error/log text
+- Affected area: `prd.md` Slice 2 / "Error text explains the v1 limitation.".

@@ -1143,16 +1143,20 @@ namespace detail {
 bool validate_kugelaudio_single_speaker_request(const std::string& text,
                                                 const VibeVoiceTTSParams& p,
                                                 std::string* error) {
+    constexpr const char* kSupportedShape =
+        "KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text";
     if (p.voice) {
-        if (error) *error = "unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; use exactly one raw reference audio input";
+        if (error) *error = std::string("unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; ") + kSupportedShape;
         return false;
     }
     if (p.ref_audio_paths.size() != 1) {
-        if (error) *error = "unsupported KugelAudio runtime feature: single-speaker v1 requires exactly one raw reference audio input";
+        if (error) *error = std::string("unsupported KugelAudio runtime feature: got ")
+            + std::to_string(p.ref_audio_paths.size())
+            + " raw reference audio input(s); " + kSupportedShape;
         return false;
     }
     if (text_has_speaker_prefix(text)) {
-        if (error) *error = "unsupported KugelAudio runtime feature: single-speaker v1 requires plain untagged text, not Speaker-tagged dialog input";
+        if (error) *error = std::string("unsupported KugelAudio runtime feature: Speaker-tagged dialog input; ") + kSupportedShape;
         return false;
     }
     return true;

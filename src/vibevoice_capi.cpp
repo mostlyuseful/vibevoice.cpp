@@ -112,7 +112,7 @@ int vv_capi_load(const char* tts_model_path,
 
     if (voice_path && voice_path[0]) {
         if (g.tts && g.tts->loader.has_key("kugelaudio.architecture")) {
-            VV_LOG_ERROR("vv_capi_load: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; load without voice_path and use exactly one raw reference audio at synthesis time");
+            VV_LOG_ERROR("vv_capi_load: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text");
             return -2;
         }
         if (!ensure_voice_loaded(g, voice_path)) return -3;
@@ -148,7 +148,7 @@ int vv_capi_tts(const char*        text,
         // 1.5B path: ref_audio_paths is required (per call or via load).
         if (voice_path && voice_path[0]) {
             if (is_kugelaudio) {
-                VV_LOG_ERROR("vv_capi_tts: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; use exactly one raw reference audio input");
+                VV_LOG_ERROR("vv_capi_tts: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text");
                 return -2;
             }
             VV_LOG_ERROR("vv_capi_tts: voice_path is not used for 1.5b TTS; pass ref_audio_paths instead");

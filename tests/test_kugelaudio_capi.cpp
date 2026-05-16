@@ -44,8 +44,8 @@ int main() {
         return 2;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
-        g_last_log.find("exactly one raw reference audio input") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: multi-ref capi log mismatch: %s\n", g_last_log.c_str());
+        g_last_log.find("KugelAudio v1 supports only single-speaker TTS") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: multi-ref capi log did not explain the v1 limitation: %s\n", g_last_log.c_str());
         return 3;
     }
 
@@ -56,8 +56,9 @@ int main() {
         return 4;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
-        g_last_log.find("pre-baked voice gguf conditioning") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: pre-baked voice capi log mismatch: %s\n", g_last_log.c_str());
+        g_last_log.find("pre-baked voice gguf conditioning") == std::string::npos ||
+        g_last_log.find("KugelAudio v1 supports only single-speaker TTS") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: pre-baked voice capi log did not explain the v1 limitation: %s\n", g_last_log.c_str());
         return 5;
     }
 

@@ -58,8 +58,8 @@ int main() {
         return 3;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
-        g_last_log.find("single-speaker v1") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: multi-ref log did not identify single-speaker runtime feature error: %s\n", g_last_log.c_str());
+        g_last_log.find("KugelAudio v1 supports only single-speaker TTS") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: multi-ref log did not explain the supported v1 shape: %s\n", g_last_log.c_str());
         return 7;
     }
 
@@ -72,8 +72,9 @@ int main() {
         return 4;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
-        g_last_log.find("plain untagged text") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: speaker-tagged log did not identify single-speaker plain-text requirement: %s\n", g_last_log.c_str());
+        g_last_log.find("plain untagged text") == std::string::npos ||
+        g_last_log.find("KugelAudio v1 supports only single-speaker TTS") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: speaker-tagged log did not explain the v1 limitation: %s\n", g_last_log.c_str());
         return 8;
     }
 
@@ -88,8 +89,9 @@ int main() {
         return 5;
     }
     if (g_last_log.find("unsupported KugelAudio runtime feature") == std::string::npos ||
-        g_last_log.find("pre-baked voice gguf conditioning") == std::string::npos) {
-        std::fprintf(stderr, "FAIL: pre-baked-voice log did not identify unsupported voice conditioning: %s\n", g_last_log.c_str());
+        g_last_log.find("pre-baked voice gguf conditioning") == std::string::npos ||
+        g_last_log.find("KugelAudio v1 supports only single-speaker TTS") == std::string::npos) {
+        std::fprintf(stderr, "FAIL: pre-baked-voice log did not explain the v1 limitation: %s\n", g_last_log.c_str());
         return 9;
     }
 
