@@ -148,6 +148,12 @@ int cmd_tts(int argc, char** argv) {
     // a thin wrapper around that.
     const bool is_15b = (model.variant == "1.5b");
     const bool is_kugelaudio = model.loader.has_key("kugelaudio.architecture");
+    if (is_kugelaudio && !voice_path.empty()) {
+        std::fprintf(stderr,
+                     "tts: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; "
+                     "KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text.\n");
+        return 1;
+    }
     if (is_15b && ref_audio.empty()) {
         if (is_kugelaudio) {
             std::fprintf(stderr,

@@ -238,3 +238,11 @@
   - reuse the conditioning short-circuit test as proof of end-to-end CLI behavior: too weak because it stops before real generation and final decode
   - require an always-on heavyweight model fixture in the repo: stronger, but outside the current repo/testing constraints
 - Affected area: `prd.md` Slice 3 / "CLI runs the supported single-speaker raw-reference path end-to-end.".
+
+### KugelAudio CLI unsupported-feature coverage scope
+- Context: the next CLI-demo item requires unsupported flags/features to be rejected clearly, but the CLI surface mixes generic validation with KugelAudio-specific v1 limits.
+- Chosen default: explicitly cover the three highest-value unsupported KugelAudio CLI cases with synthetic fixtures: `--voice`/pre-baked voice conditioning, multiple `--ref-audio`, and speaker-tagged dialog text.
+- Rejected alternatives:
+  - try to exhaustively test every malformed CLI combination in this increment: broader than the current PRD item and duplicates generic argument-parsing coverage
+  - rely only on runtime/CAPI gating tests: weaker because the item is specifically about the CLI surface rejecting unsupported flags/features clearly
+- Affected area: `prd.md` Slice 3 / "Unsupported flags/features are rejected clearly.".
