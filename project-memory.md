@@ -386,3 +386,11 @@
   - remove the legacy codepaths immediately: too risky while migration/regression coverage still depends on them
   - only document this in maintainer notes: too easy for fresh developers to miss compared with README/CLI/doc entrypoints
 - Affected area: `prd.md` Slice 5 / "Legacy paths that are not part of v1 acceptance are clearly marked or kept off the critical path.".
+
+### KugelAudio maintainer-doc refresh scope
+- Context: the next Slice 5 item requires maintainer docs to reflect the KugelAudio-first reality, but the repo's maintainer guide (`AGENTS.md`) still described the migration broadly without explicitly pointing maintainers at the current acceptance workflow, eval harness, fixture config, and parity notes.
+- Chosen default: refresh `AGENTS.md` rather than creating another maintainer doc. Add a `Start here for the KugelAudio v1 acceptance path` section, expand the layout/what-is-real sections to include the eval harness and parity docs, and update the converter workflow to end at `results.json + per-step logs`.
+- Rejected alternatives:
+  - create a separate maintainer-onboarding doc: would split the KugelAudio-first guidance across too many files
+  - rely on README only: maintainer guidance needs a stronger execution-oriented view than user-facing quickstarts
+- Affected area: `prd.md` Slice 5 / "Maintainer docs reflect the KugelAudio-first reality.".

@@ -49,10 +49,16 @@ Rule of thumb:
 
 What is real and relevant:
 - `src/vibevoice_tts.cpp` contains the TTS orchestration logic we are adapting.
-- `src/vibevoice_asr.cpp` is still useful for closed-loop evaluation and some
-  shared speech/encoder helpers.
+- `src/vibevoice_asr.cpp` is reused for closed-loop evaluation and shared
+  speech/encoder helpers.
 - `src/vibevoice_speech_helpers.hpp` already contains shared pieces reused by
   the 1.5B-style path.
+- `scripts/eval_kugelaudio_divergence.py` is the current acceptance/eval
+  orchestrator for canonical-vs-ggml comparison.
+- `tests/fixtures/kugelaudio_eval_config.json` is the acceptance fixture/config
+  entrypoint.
+- `docs/kugelaudio-parity.md` is the maintainer-facing parity/eval note that
+  reflects current Slice 3–5 reality.
 - `include/vibevoice_capi.h` is the more real embedding surface than
   `include/vibevoice.h`, but **neither is a v1 acceptance target**.
 - `src/vibevoice.cpp` / `include/vibevoice.h` are not the main product surface
@@ -64,6 +70,32 @@ What to optimize for:
 - prompt/inference parity with `../kugelaudio-open`
 - deterministic eval runs
 - closed-loop regression against canonical PyTorch
+
+## Start here for the KugelAudio v1 acceptance path
+
+If you are picking up this repo fresh, do **not** start from the old VibeVoice
+quickstarts or the legacy voice-cache flow.
+
+Read/use these first:
+- `prd.md` — current execution plan and acceptance checklist
+- `project-memory.md` — implementation decisions already taken during the
+  KugelAudio migration
+- `docs/conversion.md` — converter + GGUF contract, including KugelAudio-only
+  schema expectations
+- `docs/kugelaudio-parity.md` — parity notes, eval fixture shape, closed-loop
+  ASR assumptions, logging contract, and acceptance-path caveats
+- `scripts/eval_kugelaudio_divergence.py` — canonical-vs-ggml eval harness
+- `tests/fixtures/kugelaudio_eval_config.json` — acceptance fixture/config
+
+The current v1 acceptance workflow is:
+1. convert `kugelaudio/kugelaudio-0-open`
+2. optionally quantize to `q8_0`
+3. run the canonical-vs-ggml divergence harness
+4. inspect `results.json` + per-step logs
+5. enforce closed-loop ASR thresholds on the supported fixture
+
+If a doc/example conflicts with the above flow, treat it as legacy unless it
+explicitly says it is part of the KugelAudio v1 acceptance path.
 
 ## Layout
 
@@ -90,10 +122,13 @@ scripts/
   convert_vibevoice_to_gguf.py
   convert_voice_to_gguf.py      # legacy VibeVoice path; not a KugelAudio v1 goal
   quantize_gguf.py
+  eval_kugelaudio_divergence.py # acceptance/eval harness
 tests/
-  test_*.cpp
+  fixtures/kugelaudio_eval_config.json
+  test_kugelaudio_*.{cpp,py}    # acceptance-path tests are concentrated here
 docs/
   conversion.md
+  kugelaudio-parity.md
 third_party/ggml
 ../kugelaudio-open/
   src/kugelaudio_open/...       # canonical TTS behavior
@@ -248,8 +283,10 @@ echo 'vv_add_test(test_my_thing)' >> tests/CMakeLists.txt
 For KugelAudio work, prefer tests that:
 - compare prompt/token behavior to `../kugelaudio-open`
 - exercise the exact supported checkpoint
-- shell out to the CLI for end-to-end acceptance paths
+- shell out to the CLI or eval harness for end-to-end acceptance paths
 - keep fixtures and seeds fixed
+- make it obvious whether a test belongs to the KugelAudio v1 acceptance path
+  versus legacy VibeVoice regression coverage
 
 ## Converter workflow
 
@@ -262,7 +299,11 @@ HF checkpoint/config -> scripts/convert_vibevoice_to_gguf.py -> .gguf
                                                          ↓
                                                scripts/quantize_gguf.py
                                                          ↓
-                                                     q8_0 gguf
+                                                f16 / q8_0 gguf
+                                                         ↓
+                                  scripts/eval_kugelaudio_divergence.py
+                                                         ↓
+                                         results.json + per-step logs
 ```
 
 Guidelines:
