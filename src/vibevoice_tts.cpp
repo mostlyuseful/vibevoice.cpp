@@ -1224,26 +1224,44 @@ bool kugelaudio_token_stops_generation_for_test(int32_t token_id) {
     return kugelaudio_token_stops_generation(token_id);
 }
 
-bool validate_kugelaudio_single_speaker_request(const std::string& text,
-                                                const VibeVoiceTTSParams& p,
-                                                std::string* error) {
-    constexpr const char* kSupportedShape =
-        "KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text";
-    if (p.voice) {
-        if (error) *error = std::string("unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; ") + kSupportedShape;
+const KugelAudioRequestPolicy& kugelaudio_v1_request_policy() {
+    static const KugelAudioRequestPolicy kPolicy = {
+        /*allow_pre_baked_voice=*/false,
+        /*min_ref_audio_inputs=*/1,
+        /*max_ref_audio_inputs=*/1,
+        /*allow_speaker_tagged_dialog=*/false,
+        /*supported_shape=*/"KugelAudio v1 supports only single-speaker TTS with exactly one raw reference audio input and plain untagged text",
+    };
+    return kPolicy;
+}
+
+bool validate_kugelaudio_request(const std::string& text,
+                                 const VibeVoiceTTSParams& p,
+                                 const KugelAudioRequestPolicy& policy,
+                                 std::string* error) {
+    const char* supported_shape = policy.supported_shape ? policy.supported_shape : "unsupported KugelAudio request shape";
+    if (p.voice && !policy.allow_pre_baked_voice) {
+        if (error) *error = std::string("unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; ") + supported_shape;
         return false;
     }
-    if (p.ref_audio_paths.size() != 1) {
+    if (p.ref_audio_paths.size() < policy.min_ref_audio_inputs ||
+        p.ref_audio_paths.size() > policy.max_ref_audio_inputs) {
         if (error) *error = std::string("unsupported KugelAudio runtime feature: got ")
             + std::to_string(p.ref_audio_paths.size())
-            + " raw reference audio input(s); " + kSupportedShape;
+            + " raw reference audio input(s); " + supported_shape;
         return false;
     }
-    if (text_has_speaker_prefix(text)) {
-        if (error) *error = std::string("unsupported KugelAudio runtime feature: Speaker-tagged dialog input; ") + kSupportedShape;
+    if (text_has_speaker_prefix(text) && !policy.allow_speaker_tagged_dialog) {
+        if (error) *error = std::string("unsupported KugelAudio runtime feature: Speaker-tagged dialog input; ") + supported_shape;
         return false;
     }
     return true;
+}
+
+bool validate_kugelaudio_single_speaker_request(const std::string& text,
+                                                const VibeVoiceTTSParams& p,
+                                                std::string* error) {
+    return validate_kugelaudio_request(text, p, kugelaudio_v1_request_policy(), error);
 }
 
 }  // namespace detail

@@ -402,3 +402,11 @@
   - require the entire repo test suite to avoid every dropped feature: impossible while legacy regression coverage is intentionally retained
   - only rely on documentation/inspection: weaker than a machine-checked boundary on the actual acceptance path
 - Affected area: `prd.md` Slice 5 / "Acceptance scripts/tests do not depend on dropped features.".
+
+### KugelAudio request-policy seam
+- Context: the next Slice 5 item requires proving that the current v1 design does not block deferred features, but the KugelAudio request validation logic was hard-coded as one `validate_kugelaudio_single_speaker_request(...)` path with no explicit widening seam.
+- Chosen default: introduce an explicit `KugelAudioRequestPolicy` plus `validate_kugelaudio_request(...)`, and keep the current v1 behavior as one named profile (`kugelaudio_v1_request_policy()`). This keeps current behavior unchanged while making later support for wider request shapes (e.g. multi-reference or speaker-tagged dialog) a policy expansion instead of a rewrite.
+- Rejected alternatives:
+  - leave the single-speaker helper as the only API: simpler short-term, but makes future widening look like special-case patching
+  - add partial V2 fields to `VibeVoiceTTSParams` right now: broader than needed for the current v1-only increment
+- Affected area: `prd.md` Slice 5 / "V1 design does not block deferred features.".

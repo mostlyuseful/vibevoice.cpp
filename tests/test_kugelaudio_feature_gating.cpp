@@ -41,12 +41,21 @@ int main() {
 
     std::vector<float> samples;
 
+    const auto& policy = vv::detail::kugelaudio_v1_request_policy();
+    if (policy.allow_pre_baked_voice ||
+        policy.min_ref_audio_inputs != 1 ||
+        policy.max_ref_audio_inputs != 1 ||
+        policy.allow_speaker_tagged_dialog) {
+        std::fprintf(stderr, "FAIL: unexpected KugelAudio v1 request policy shape\n");
+        return 2;
+    }
+
     vv::VibeVoiceTTSParams accepted;
     accepted.ref_audio_paths = {"a.wav"};
     std::string gate_error;
-    if (!vv::detail::validate_kugelaudio_single_speaker_request("Hello world.", accepted, &gate_error)) {
+    if (!vv::detail::validate_kugelaudio_request("Hello world.", accepted, policy, &gate_error)) {
         std::fprintf(stderr, "FAIL: accepted KugelAudio single-reference shape was rejected: %s\n", gate_error.c_str());
-        return 2;
+        return 20;
     }
 
     vv::VibeVoiceTTSParams multi_ref;

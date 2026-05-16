@@ -177,6 +177,23 @@ int vibevoice_tts_generate(VibeVoiceModel*           model,
                            std::vector<float>*       samples);
 
 namespace detail {
+// Policy seam for deferred KugelAudio features. V1 keeps the profile narrow,
+// but future work (multi-reference, speaker-tagged dialog, alternative
+// conditioning shapes) should widen behavior by introducing a new profile,
+// not by scattering ad hoc conditionals across CLI/runtime/CAPI callsites.
+struct KugelAudioRequestPolicy {
+    bool        allow_pre_baked_voice      = false;
+    std::size_t min_ref_audio_inputs       = 1;
+    std::size_t max_ref_audio_inputs       = 1;
+    bool        allow_speaker_tagged_dialog = false;
+    const char* supported_shape            = nullptr;
+};
+
+const KugelAudioRequestPolicy& kugelaudio_v1_request_policy();
+bool validate_kugelaudio_request(const std::string& text,
+                                 const VibeVoiceTTSParams& p,
+                                 const KugelAudioRequestPolicy& policy,
+                                 std::string* error);
 bool validate_kugelaudio_single_speaker_request(const std::string& text,
                                                 const VibeVoiceTTSParams& p,
                                                 std::string* error);

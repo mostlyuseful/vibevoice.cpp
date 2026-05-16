@@ -297,7 +297,7 @@ Testing:
 Leave clean seams for later work: chunking, language hints, multi-speaker, KV-cache quantization, and broader quantization support.
 
 AC:
-- [ ] V1 design does not block deferred features.
+- [x] V1 design does not block deferred features.
 - [ ] Deferred-feature seams are identified in code/docs where relevant.
 - [ ] No V2 feature is half-implemented in the critical path.
 
