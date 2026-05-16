@@ -394,3 +394,11 @@
   - create a separate maintainer-onboarding doc: would split the KugelAudio-first guidance across too many files
   - rely on README only: maintainer guidance needs a stronger execution-oriented view than user-facing quickstarts
 - Affected area: `prd.md` Slice 5 / "Maintainer docs reflect the KugelAudio-first reality.".
+
+### KugelAudio acceptance-surface boundary
+- Context: the next Slice 5 item requires proving that acceptance scripts/tests do not depend on dropped features, but the repo still contains many legacy VibeVoice regression tests and examples by design.
+- Chosen default: define the acceptance surface narrowly as the KugelAudio eval harness (`scripts/eval_kugelaudio_divergence.py`), its fixture/config (`tests/fixtures/kugelaudio_eval_config.json`), and their dedicated acceptance tests. Add a regression test that asserts this surface does not use `--voice`, multiple `--ref-audio`, speaker-tagged dialog, `voice_cache`, or language-hint fields.
+- Rejected alternatives:
+  - require the entire repo test suite to avoid every dropped feature: impossible while legacy regression coverage is intentionally retained
+  - only rely on documentation/inspection: weaker than a machine-checked boundary on the actual acceptance path
+- Affected area: `prd.md` Slice 5 / "Acceptance scripts/tests do not depend on dropped features.".
