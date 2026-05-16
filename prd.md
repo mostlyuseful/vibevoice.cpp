@@ -129,7 +129,7 @@ Testing:
 Keep only the supported conditioning mode: one raw reference input, one speaker.
 
 AC:
-- [ ] Multiple references or pre-encoded voice inputs are rejected clearly.
+- [x] Multiple references or pre-encoded voice inputs are rejected clearly.
 - [ ] Single reference path is fully wired through CLI -> preprocessing -> conditioning.
 - [ ] Error text explains the v1 limitation.
 

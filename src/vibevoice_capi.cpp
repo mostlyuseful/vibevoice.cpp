@@ -111,6 +111,10 @@ int vv_capi_load(const char* tts_model_path,
     }
 
     if (voice_path && voice_path[0]) {
+        if (g.tts && g.tts->loader.has_key("kugelaudio.architecture")) {
+            VV_LOG_ERROR("vv_capi_load: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; load without voice_path and use exactly one raw reference audio at synthesis time");
+            return -2;
+        }
         if (!ensure_voice_loaded(g, voice_path)) return -3;
     }
     return 0;
@@ -131,6 +135,7 @@ int vv_capi_tts(const char*        text,
     if (!text || !dst_wav_path) return -2;
 
     const bool is_15b = (g.tts->variant == "1.5b");
+    const bool is_kugelaudio = g.tts->loader.has_key("kugelaudio.architecture");
 
     vv::VibeVoiceTTSParams p;
     p.cfg_scale          = cfg_scale > 0.0f ? cfg_scale : 1.3f;
@@ -141,6 +146,14 @@ int vv_capi_tts(const char*        text,
 
     if (is_15b) {
         // 1.5B path: ref_audio_paths is required (per call or via load).
+        if (voice_path && voice_path[0]) {
+            if (is_kugelaudio) {
+                VV_LOG_ERROR("vv_capi_tts: unsupported KugelAudio runtime feature: pre-baked voice gguf conditioning; use exactly one raw reference audio input");
+                return -2;
+            }
+            VV_LOG_ERROR("vv_capi_tts: voice_path is not used for 1.5b TTS; pass ref_audio_paths instead");
+            return -2;
+        }
         if (n_ref_audio_paths > 0 && ref_audio_paths) {
             for (int i = 0; i < n_ref_audio_paths; ++i) {
                 if (ref_audio_paths[i] && ref_audio_paths[i][0]) {
@@ -152,9 +165,19 @@ int vv_capi_tts(const char*        text,
             p.ref_audio_paths.push_back(g.ref_audio_path_loaded);
         }
         if (p.ref_audio_paths.empty()) {
-            VV_LOG_ERROR("vv_capi_tts: 1.5b model needs at least one "
-                         "ref_audio_paths entry (per-call or via vv_capi_load)");
+            if (is_kugelaudio) {
+                VV_LOG_ERROR("vv_capi_tts: unsupported KugelAudio runtime feature: single-speaker v1 requires exactly one raw reference audio input");
+            } else {
+                VV_LOG_ERROR("vv_capi_tts: 1.5b model needs at least one ref_audio_paths entry (per-call or via vv_capi_load)");
+            }
             return -2;
+        }
+        if (is_kugelaudio) {
+            std::string gate_error;
+            if (!vv::detail::validate_kugelaudio_single_speaker_request(text, p, &gate_error)) {
+                VV_LOG_ERROR("vv_capi_tts: %s", gate_error.c_str());
+                return -2;
+            }
         }
     } else {
         // realtime-0.5b path: voice_path required (per call or via load).

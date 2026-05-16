@@ -137,11 +137,11 @@
 
 ### Shared KugelAudio single-reference gate
 - Context: the next raw-reference item requires the supported single-reference path to be accepted through the runtime/CLI surface, but the validation currently lives only inside the runtime implementation.
-- Chosen default: expose the KugelAudio v1 single-reference request validator through a shared helper used by both runtime and CLI so the accepted shape and rejected shapes stay aligned.
+- Chosen default: expose the KugelAudio v1 single-reference request validator through a shared helper used by runtime, CLI, and C API so the accepted shape and rejected shapes stay aligned.
 - Rejected alternatives:
-  - duplicate the validation logic in the CLI: simple short-term, but prone to drift from the runtime gate
-  - test only the runtime call path: misses the PRD requirement that the currently supported CLI path accept the same shape explicitly
-- Affected area: `prd.md` Slice 2 / "Raw reference audio is accepted through the runtime/CLI path supported by the repo today.".
+  - duplicate the validation logic in each frontend: simple short-term, but prone to drift from the runtime gate
+  - test only the runtime call path: misses the PRD requirement that the currently supported public surfaces reject the same unsupported conditioning modes explicitly
+- Affected area: `prd.md` Slice 2 / conditioning-mode validation and rejection behavior.
 
 ### Reference-audio resampling validation point
 - Context: the next raw-reference item requires proving that reference audio is resampled internally to 24 kHz mono, and the runtime already funnels that through `load_wav_24k_mono`.
