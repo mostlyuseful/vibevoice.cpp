@@ -150,3 +150,11 @@
   - add a heavier end-to-end TTS test just for resampling: broader and slower than needed for this focused acceptance item
   - leave resampling covered only indirectly by smoke tests: weaker signal if the I/O boundary regresses
 - Affected area: `prd.md` Slice 2 / "Audio is resampled internally to 24 kHz mono.".
+
+### Acoustic+semantic conditioning fusion point
+- Context: the next raw-reference item requires proving that both acoustic and semantic conditioning are used, and the current KugelAudio path combined them inline in `tts_15b_generate`.
+- Chosen default: extract the feature fusion into a shared helper and unit-test that helper directly, so the acceptance check proves both branches contribute to the final speech conditioning features.
+- Rejected alternatives:
+  - rely only on code inspection of the inline sum: not strong enough for a repeatable acceptance check
+  - add a heavy end-to-end audio-quality regression just for this item: broader and noisier than needed for the current slice
+- Affected area: `prd.md` Slice 2 / "Both acoustic and semantic conditioning are used for the supported path.".

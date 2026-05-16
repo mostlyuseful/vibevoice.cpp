@@ -40,6 +40,14 @@ std::vector<float> lm_head_logits_last(struct ggml_tensor* lm_head_w,
                                        const std::vector<float>& hidden_last,
                                        int hidden, int vocab);
 
+// Combine acoustic and semantic conditioning features frame-wise.
+// Both inputs must be shaped [hidden * T]. Returns false on mismatch.
+bool fuse_conditioning_features(const std::vector<float>& acoustic,
+                                const std::vector<float>& semantic,
+                                int hidden,
+                                int T,
+                                std::vector<float>* out);
+
 }  // namespace vv::detail
 
 #endif  // VIBEVOICE_SPEECH_HELPERS_HPP

@@ -339,6 +339,21 @@ std::vector<float> lm_head_logits_last(struct ggml_tensor* lm_head_w,
     return ::vv::lm_head_logits_last(lm_head_w, hidden_last, hidden, vocab);
 }
 
+bool fuse_conditioning_features(const std::vector<float>& acoustic,
+                                const std::vector<float>& semantic,
+                                int hidden,
+                                int T,
+                                std::vector<float>* out) {
+    if (!out) return false;
+    const size_t want = static_cast<size_t>(hidden) * static_cast<size_t>(T);
+    if (acoustic.size() != want || semantic.size() != want) return false;
+    out->resize(want);
+    for (size_t i = 0; i < want; ++i) {
+        (*out)[i] = acoustic[i] + semantic[i];
+    }
+    return true;
+}
+
 }  // namespace detail
 
 int vibevoice_asr_transcribe(VibeVoiceModel*           model,

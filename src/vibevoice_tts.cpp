@@ -1417,11 +1417,17 @@ int tts_15b_generate(VibeVoiceModel*            model,
             return -6;
         }
 
-        const size_t base = speech_features.size();
-        speech_features.resize(base + static_cast<size_t>(hidden) * Tc);
-        for (size_t i = 0; i < ac_emb.size(); ++i) {
-            speech_features[base + i] = ac_emb[i] + sm_emb[i];
+        std::vector<float> fused_features;
+        if (!detail::fuse_conditioning_features(ac_emb, sm_emb, hidden, Tc, &fused_features)) {
+            VV_LOG_ERROR("tts_15b: failed to fuse acoustic + semantic conditioning on speaker %zu", s);
+            return -6;
         }
+
+        const size_t base = speech_features.size();
+        speech_features.resize(base + fused_features.size());
+        std::memcpy(speech_features.data() + base,
+                    fused_features.data(),
+                    sizeof(float) * fused_features.size());
 
         per_speaker_Tc.push_back(Tc);
         total_Tc += Tc;
