@@ -115,7 +115,7 @@ Use the current repo’s audio loader path, then resample to 24 kHz mono and app
 
 AC:
 - [x] Raw reference audio is accepted through the runtime/CLI path supported by the repo today.
-- [ ] Audio is resampled internally to 24 kHz mono.
+- [x] Audio is resampled internally to 24 kHz mono.
 - [ ] Canonical RMS/loudness normalization is applied.
 - [ ] Both acoustic and semantic conditioning are used for the supported path.
 

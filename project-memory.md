@@ -142,3 +142,11 @@
   - duplicate the validation logic in the CLI: simple short-term, but prone to drift from the runtime gate
   - test only the runtime call path: misses the PRD requirement that the currently supported CLI path accept the same shape explicitly
 - Affected area: `prd.md` Slice 2 / "Raw reference audio is accepted through the runtime/CLI path supported by the repo today.".
+
+### Reference-audio resampling validation point
+- Context: the next raw-reference item requires proving that reference audio is resampled internally to 24 kHz mono, and the runtime already funnels that through `load_wav_24k_mono`.
+- Chosen default: validate the behavior at `load_wav_24k_mono` directly in `test_audio_io.cpp`, since that is the shared convergence point used by the KugelAudio reference-audio path.
+- Rejected alternatives:
+  - add a heavier end-to-end TTS test just for resampling: broader and slower than needed for this focused acceptance item
+  - leave resampling covered only indirectly by smoke tests: weaker signal if the I/O boundary regresses
+- Affected area: `prd.md` Slice 2 / "Audio is resampled internally to 24 kHz mono.".
