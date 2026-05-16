@@ -62,3 +62,11 @@
   - rely only on lower-level `load_encoder` / `load_decoder` failures: works eventually, but error messages are less obviously tied to the missing high-level submodule
   - enumerate every tensor name in the loader error: too noisy compared with a targeted submodule-level diagnosis
 - Affected area: `prd.md` Slice 1 / "Missing semantic/acoustic submodules fail clearly.".
+
+### KugelAudio loader explicit-metadata gate
+- Context: the remaining loader item requires behavior not to depend on implicit old VibeVoice defaults, but the current metadata readers still allow silent fallback defaults for missing KugelAudio numeric fields.
+- Chosen default: add an explicit KugelAudio metadata preflight that requires the canonical schema keys needed by the current load path before any config defaults are applied.
+- Rejected alternatives:
+  - keep relying on numeric fallback defaults (`64`, `24000`, etc.): simpler, but makes missing-schema cases load ambiguously
+  - require every possible legacy and canonical key pair: over-constrains migration when canonical `kugelaudio.*` alone is sufficient
+- Affected area: `prd.md` Slice 1 / "Loader behavior is deterministic and does not depend on implicit old VibeVoice defaults.".

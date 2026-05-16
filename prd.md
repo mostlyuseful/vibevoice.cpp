@@ -56,7 +56,7 @@ Teach `model_loader` / `vibevoice_tts` load paths to recognize the new KugelAudi
 AC:
 - [x] Loader recognizes the supported KugelAudio checkpoint and populates the TTS model state correctly.
 - [x] Missing semantic/acoustic submodules fail clearly.
-- [ ] Loader behavior is deterministic and does not depend on implicit old VibeVoice defaults.
+- [x] Loader behavior is deterministic and does not depend on implicit old VibeVoice defaults.
 
 Testing:
 - Unit: metadata key lookup and fallback behavior.

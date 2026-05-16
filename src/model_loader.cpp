@@ -190,6 +190,10 @@ bool ModelLoader::has(const std::string& name) const {
     return tensor_by_name_.count(name) > 0;
 }
 
+bool ModelLoader::has_key(const std::string& key) const {
+    return gguf_ && gguf_find_key(gguf_, key.c_str()) >= 0;
+}
+
 namespace {
 int64_t find_key(struct gguf_context* g, const std::string& key) {
     return gguf_find_key(g, key.c_str());  // returns -1 if missing

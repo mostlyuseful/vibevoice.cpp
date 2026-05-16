@@ -83,33 +83,53 @@ def add_diffusion_head(w, head_layers):
             add_tensor(w, f"dh.layer_{i}.{suffix}")
 
 
-def write_fixture(path: Path, *, schema_version: int, checkpoint: str, omit_prefixes=()):
+def write_fixture(path: Path, *, schema_version: int, checkpoint: str, omit_prefixes=(), omit_keys=()):
     omitted = tuple(omit_prefixes)
+    omitted_keys = set(omit_keys)
 
     def keep(name: str) -> bool:
         return not any(name.startswith(prefix) for prefix in omitted)
 
+    def add_u32(key: str, value: int):
+        if key not in omitted_keys:
+            w.add_uint32(key, value)
+
+    def add_f32(key: str, value: float):
+        if key not in omitted_keys:
+            w.add_float32(key, value)
+
+    def add_str(key: str, value: str):
+        if key not in omitted_keys:
+            w.add_string(key, value)
+
+    def add_arr(key: str, value):
+        if key not in omitted_keys:
+            w.add_array(key, value)
+
     w = gguf.GGUFWriter(str(path), arch="vibevoice")
-    w.add_uint32("kugelaudio.schema_version", schema_version)
-    w.add_string("kugelaudio.architecture", "kugelaudio")
-    w.add_string("kugelaudio.checkpoint", checkpoint)
-    w.add_uint32("kugelaudio.decoder.hidden_size", 3584)
-    w.add_uint32("kugelaudio.decoder.num_hidden_layers", 28)
-    w.add_uint32("kugelaudio.decoder.tts_hidden_layers", 20)
-    w.add_uint32("kugelaudio.decoder.num_attention_heads", 28)
-    w.add_uint32("kugelaudio.decoder.num_key_value_heads", 4)
-    w.add_uint32("kugelaudio.decoder.head_dim", 128)
-    w.add_uint32("kugelaudio.decoder.vocab_size", 152064)
-    w.add_float32("kugelaudio.decoder.rope_theta", 1000000.0)
-    w.add_float32("kugelaudio.decoder.rms_norm_eps", 1e-6)
-    w.add_uint32("kugelaudio.acoustic.vae_dim", 64)
-    w.add_array("kugelaudio.acoustic.encoder_ratios", [8, 5, 5, 4, 2, 2])
-    w.add_array("kugelaudio.acoustic.encoder_depths", [3, 3, 3, 3, 3, 3, 8])
-    w.add_array("kugelaudio.acoustic.decoder_depths", [8, 3, 3, 3, 3, 3, 3])
-    w.add_uint32("kugelaudio.diffusion.head_layers", 4)
-    w.add_float32("kugelaudio.diffusion.ffn_ratio", 3.0)
-    w.add_uint32("kugelaudio.diffusion.latent_size", 64)
-    w.add_uint32("kugelaudio.sample_rate", 24000)
+    add_u32("kugelaudio.schema_version", schema_version)
+    add_str("kugelaudio.architecture", "kugelaudio")
+    add_str("kugelaudio.checkpoint", checkpoint)
+    add_u32("kugelaudio.decoder.hidden_size", 3584)
+    add_u32("kugelaudio.decoder.num_hidden_layers", 28)
+    add_u32("kugelaudio.decoder.tts_hidden_layers", 20)
+    add_u32("kugelaudio.decoder.num_attention_heads", 28)
+    add_u32("kugelaudio.decoder.num_key_value_heads", 4)
+    add_u32("kugelaudio.decoder.head_dim", 128)
+    add_u32("kugelaudio.decoder.vocab_size", 152064)
+    add_f32("kugelaudio.decoder.rope_theta", 1000000.0)
+    add_f32("kugelaudio.decoder.rms_norm_eps", 1e-6)
+    add_u32("kugelaudio.acoustic.vae_dim", 64)
+    add_arr("kugelaudio.acoustic.encoder_ratios", [8, 5, 5, 4, 2, 2])
+    add_arr("kugelaudio.acoustic.encoder_depths", [3, 3, 3, 3, 3, 3, 8])
+    add_arr("kugelaudio.acoustic.decoder_depths", [8, 3, 3, 3, 3, 3, 3])
+    add_u32("kugelaudio.semantic.vae_dim", 64)
+    add_arr("kugelaudio.semantic.encoder_ratios", [8, 5, 5, 4, 2, 2])
+    add_arr("kugelaudio.semantic.encoder_depths", [3, 3, 3, 3, 3, 3, 8])
+    add_u32("kugelaudio.diffusion.head_layers", 4)
+    add_f32("kugelaudio.diffusion.ffn_ratio", 3.0)
+    add_u32("kugelaudio.diffusion.latent_size", 64)
+    add_u32("kugelaudio.sample_rate", 24000)
 
     add_qwen_stack(w, "lm", 8)
     for name in ["lm.output_norm.weight", "lm_head.weight", "speech.scaling", "speech.bias"]:
@@ -148,12 +168,14 @@ def main():
     write_fixture(out_dir / "kugelaudio_loader_bad_checkpoint.gguf", schema_version=1, checkpoint="kugelaudio-1-open")
     write_fixture(out_dir / "kugelaudio_loader_missing_semantic.gguf", schema_version=1, checkpoint="kugelaudio-0-open", omit_prefixes=("st.enc.", "sc."))
     write_fixture(out_dir / "kugelaudio_loader_missing_acoustic.gguf", schema_version=1, checkpoint="kugelaudio-0-open", omit_prefixes=("at.dec.",))
+    write_fixture(out_dir / "kugelaudio_loader_missing_metadata.gguf", schema_version=1, checkpoint="kugelaudio-0-open", omit_keys=("kugelaudio.diffusion.latent_size",))
     print(json.dumps({
         "ok": str(out_dir / "kugelaudio_loader_ok.gguf"),
         "bad_schema": str(out_dir / "kugelaudio_loader_bad_schema.gguf"),
         "bad_checkpoint": str(out_dir / "kugelaudio_loader_bad_checkpoint.gguf"),
         "missing_semantic": str(out_dir / "kugelaudio_loader_missing_semantic.gguf"),
         "missing_acoustic": str(out_dir / "kugelaudio_loader_missing_acoustic.gguf"),
+        "missing_metadata": str(out_dir / "kugelaudio_loader_missing_metadata.gguf"),
     }))
 
 

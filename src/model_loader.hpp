@@ -33,6 +33,7 @@ public:
     // Tensor lookup. Returns nullptr if not found.
     struct ggml_tensor* tensor(const std::string& name) const;
     bool                has(const std::string& name) const;
+    bool                has_key(const std::string& key) const;
 
     // Cast all small (1-D / scalar / few-row) f16 tensors to f32 in-place.
     // ggml's CPU element-wise ops don't auto-cast f32 + f16, so norm scales,

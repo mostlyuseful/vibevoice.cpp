@@ -22,14 +22,17 @@ int main() {
     const char* bad_checkpoint_path = std::getenv("VIBEVOICE_KUGELAUDIO_BAD_CHECKPOINT_MODEL");
     const char* missing_semantic_path = std::getenv("VIBEVOICE_KUGELAUDIO_MISSING_SEMANTIC_MODEL");
     const char* missing_acoustic_path = std::getenv("VIBEVOICE_KUGELAUDIO_MISSING_ACOUSTIC_MODEL");
+    const char* missing_metadata_path = std::getenv("VIBEVOICE_KUGELAUDIO_MISSING_METADATA_MODEL");
     if (!file_ok(ok_path) || !file_ok(bad_schema_path) || !file_ok(bad_checkpoint_path) ||
-        !file_ok(missing_semantic_path) || !file_ok(missing_acoustic_path)) {
+        !file_ok(missing_semantic_path) || !file_ok(missing_acoustic_path) ||
+        !file_ok(missing_metadata_path)) {
         std::fprintf(stderr,
                      "skip: set VIBEVOICE_KUGELAUDIO_MODEL, "
                      "VIBEVOICE_KUGELAUDIO_BAD_SCHEMA_MODEL, "
                      "VIBEVOICE_KUGELAUDIO_BAD_CHECKPOINT_MODEL, "
-                     "VIBEVOICE_KUGELAUDIO_MISSING_SEMANTIC_MODEL and "
-                     "VIBEVOICE_KUGELAUDIO_MISSING_ACOUSTIC_MODEL\n");
+                     "VIBEVOICE_KUGELAUDIO_MISSING_SEMANTIC_MODEL, "
+                     "VIBEVOICE_KUGELAUDIO_MISSING_ACOUSTIC_MODEL and "
+                     "VIBEVOICE_KUGELAUDIO_MISSING_METADATA_MODEL\n");
         return 77;
     }
 
@@ -77,6 +80,12 @@ int main() {
     if (vv::vibevoice_load(missing_acoustic_path, &missing_acoustic)) {
         std::fprintf(stderr, "FAIL: missing acoustic submodule fixture loaded successfully\n");
         return 8;
+    }
+
+    vv::VibeVoiceModel missing_metadata;
+    if (vv::vibevoice_load(missing_metadata_path, &missing_metadata)) {
+        std::fprintf(stderr, "FAIL: missing metadata fixture loaded successfully\n");
+        return 9;
     }
 
     std::printf("KugelAudio loader contract OK\n");
