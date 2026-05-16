@@ -10,11 +10,15 @@ A C++ inference engine for Microsoft [VibeVoice](https://github.com/microsoft/Vi
 [ggml](https://github.com/ggml-org/ggml). Supports both **TTS** (text-to-speech with voice
 cloning) and **ASR** (long-form transcription with diarization).
 
-> Status: TTS + ASR pipelines run end-to-end on real model weights, with
-> classifier-free guidance for TTS and a working closed-loop self-test
-> (TTS → ASR produces real English transcripts of the synthesized audio).
+> Status: this fork's **v1 acceptance path is KugelAudio-first**:
+> `kugelaudio/kugelaudio-0-open`, single-speaker TTS, exactly one raw
+> reference WAV, CLI-only, canonical-vs-ggml divergence evaluation.
+>
+> Legacy VibeVoice surfaces remain in the repo for migration and regression
+> coverage, but **they are not the KugelAudio v1 acceptance path** unless a
+> section below explicitly says otherwise.
 
-## Quickstart - prebuilt models
+## Quickstart - prebuilt models (legacy VibeVoice examples, not KugelAudio v1 acceptance)
 
 We publish quantized GGUFs at [`mudler/vibevoice.cpp-models`](https://huggingface.co/mudler/vibevoice.cpp-models).
 Pull them and you're running in two commands:
@@ -44,7 +48,7 @@ mkdir -p models && hf download mudler/vibevoice.cpp-models --local-dir models
   --audio     hello.wav
 ```
 
-## Quickstart - convert from upstream
+## Quickstart - convert from upstream (legacy VibeVoice examples, not KugelAudio v1 acceptance)
 
 If you want to roll your own (different quant, different voice, etc.):
 
@@ -79,7 +83,7 @@ python scripts/convert_voice_to_gguf.py --src /tmp/voice.pt --out models/voice.g
   --cfg 3.0 --steps 20 --max-frames 40 --verbose
 ```
 
-## Closed-loop sanity (TTS → ASR)
+## Closed-loop sanity (TTS → ASR) (legacy VibeVoice example)
 
 ```bash
 # 1. synthesize
@@ -101,7 +105,7 @@ python scripts/convert_voice_to_gguf.py --src /tmp/voice.pt --out models/voice.g
 This is the same roundtrip codified as `tests/test_closed_loop.cpp` - see
 [`docs/conversion.md`](docs/conversion.md) for how to wire it into ctest.
 
-## Quickstart - voice cloning (1.5B)
+## Quickstart - voice cloning (1.5B) (legacy VibeVoice path, not KugelAudio v1 acceptance)
 
 The `microsoft/VibeVoice-1.5B` model conditions on a raw reference WAV
 at synthesis time — no separate voice gguf needed. Hand it ~5 s of any
@@ -160,12 +164,15 @@ WAV's encoded features as the voice for the corresponding speaker.
   --out dialog.wav
 ```
 
-Note: voice cloning **only** works with the 1.5B variant. The
-realtime-0.5B weights ship without encoders, so they can't process a
-reference WAV at runtime — they only consume pre-baked voice gguf
-files (see `scripts/convert_voice_to_gguf.py`).
+Note: this section documents the **legacy VibeVoice 1.5B path**. It is
+useful migration/reference scaffolding, but it is **not** the KugelAudio v1
+acceptance path.
 
-## Quickstart - ASR
+Also note: realtime-0.5B voice prompting via pre-baked `voice.gguf` files
+(see `scripts/convert_voice_to_gguf.py`) is a **legacy VibeVoice-only** flow
+and is not part of KugelAudio v1 acceptance.
+
+## Quickstart - ASR (legacy VibeVoice ASR path reused by KugelAudio eval)
 
 ```bash
 # ASR model (~14 GB safetensors → ~33 GB fp32 gguf - needs lots of disk)

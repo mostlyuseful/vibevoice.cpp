@@ -216,7 +216,11 @@ self.ratios = config.ratios                   # decoder
 That means `down_1` has stride `ratios[N-1]`, not `ratios[0]`. The C++
 loader handles this in `src/acoustic_tokenizer.cpp::load_encoder`.
 
-## `scripts/convert_voice_to_gguf.py`
+## `scripts/convert_voice_to_gguf.py` (legacy VibeVoice-only path)
+
+This converter exists for the **legacy realtime-0.5B VibeVoice voice-cache
+flow**. It is kept for migration/reference purposes, but it is **not part of
+KugelAudio v1 acceptance**.
 
 VibeVoice TTS conditions on a precomputed KV cache for a known speaker
 (the "voice prompt"). Upstream ships these as `.pt` files under
@@ -233,7 +237,8 @@ python scripts/convert_voice_to_gguf.py \
 ```
 
 Voice GGUFs are model-agnostic in shape but specific to the realtime
-TTS architecture (`realtime-0.5b`); they are not used by ASR.
+TTS architecture (`realtime-0.5b`); they are not used by ASR and they are
+not used by KugelAudio v1.
 
 ## `scripts/quantize_gguf.py`
 

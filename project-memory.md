@@ -378,3 +378,11 @@
   - remove prompt/audio-related logging entirely: safer, but weaker for operators debugging eval mismatches
   - keep full prompt/path logging and rely on a future verbose/redaction flag: violates the default-safety requirement
 - Affected area: `prd.md` Slice 5 / "Sensitive prompt/audio contents are not dumped by default.".
+
+### KugelAudio legacy-path marking scope
+- Context: the next Slice 5 item requires legacy paths outside KugelAudio v1 acceptance to be clearly marked or kept off the critical path, but the highest-traffic repo surfaces (README, conversion docs, CLI help) still presented several old VibeVoice flows as if they were equally current.
+- Chosen default: mark legacy paths explicitly where developers are most likely to enter the repo: README section headings, `docs/conversion.md` for `convert_voice_to_gguf.py`, and CLI help for `--voice`. Keep the codepaths available, but label them as legacy/migration/reference and not part of KugelAudio v1 acceptance.
+- Rejected alternatives:
+  - remove the legacy codepaths immediately: too risky while migration/regression coverage still depends on them
+  - only document this in maintainer notes: too easy for fresh developers to miss compared with README/CLI/doc entrypoints
+- Affected area: `prd.md` Slice 5 / "Legacy paths that are not part of v1 acceptance are clearly marked or kept off the critical path.".

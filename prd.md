@@ -283,7 +283,7 @@ Testing:
 Reduce confusion from old VibeVoice-specific code paths that are not part of KugelAudio v1 acceptance.
 
 AC:
-- [ ] Legacy paths that are not part of v1 acceptance are clearly marked or kept off the critical path.
+- [x] Legacy paths that are not part of v1 acceptance are clearly marked or kept off the critical path.
 - [ ] Maintainer docs reflect the KugelAudio-first reality.
 - [ ] Acceptance scripts/tests do not depend on dropped features.
 
