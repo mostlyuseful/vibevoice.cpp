@@ -191,6 +191,8 @@ void build_kugelaudio_prompt_input_ids_for_test(const Tokenizer& tokenizer,
                                                 std::vector<int>* pad_positions);
 std::vector<int32_t> kugelaudio_valid_speech_token_ids_for_test();
 int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits);
+bool kugelaudio_token_requires_cfg_reset_for_test(int32_t token_id);
+bool kugelaudio_token_stops_generation_for_test(int32_t token_id);
 int kugelaudio_speech_start_id_for_test();
 int kugelaudio_speech_end_id_for_test();
 int kugelaudio_speech_diffusion_id_for_test();

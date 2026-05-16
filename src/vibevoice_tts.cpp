@@ -1159,12 +1159,28 @@ int select_kugelaudio_speech_token_from_logits(const std::vector<float>& logits)
     return best_id;
 }
 
+bool kugelaudio_token_requires_cfg_reset(int32_t token_id) {
+    return token_id == kSpeech15bStartId;
+}
+
+bool kugelaudio_token_stops_generation(int32_t token_id) {
+    return token_id == kSpeech15bEndId || token_id == kSpeech15bEosId;
+}
+
 std::vector<int32_t> kugelaudio_valid_speech_token_ids_for_test() {
     return kugelaudio_valid_speech_token_ids();
 }
 
 int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits) {
     return select_kugelaudio_speech_token_from_logits(logits);
+}
+
+bool kugelaudio_token_requires_cfg_reset_for_test(int32_t token_id) {
+    return kugelaudio_token_requires_cfg_reset(token_id);
+}
+
+bool kugelaudio_token_stops_generation_for_test(int32_t token_id) {
+    return kugelaudio_token_stops_generation(token_id);
 }
 
 bool validate_kugelaudio_single_speaker_request(const std::string& text,
@@ -1616,6 +1632,21 @@ int tts_15b_generate(VibeVoiceModel*            model,
                      static_cast<double>(p.cfg_scale));
     }
 
+    auto reset_kugelaudio_neg_branch = [&]() -> bool {
+        kv_neg.past_len = 0;
+        std::vector<float> neg_seed_embed(static_cast<size_t>(hidden));
+        embed_row(w.lm_tok_embd, kSpeech15bStartId, hidden, neg_seed_embed.data());
+        if (!run_qwen2_stack(nullptr, cfg, w.lm_layers, w.tlm_output_norm,
+                             /*past_len=*/0, /*n_new=*/1, neg_seed_embed.data(),
+                             &kv_neg, /*all_hidden_out=*/nullptr,
+                             &neg_hidden_last)) {
+            VV_LOG_ERROR("tts_15b: neg branch reset failed");
+            return false;
+        }
+        neg_pos = 1;
+        return true;
+    };
+
     // ---- 7. speech-generation loop ----
     DPMSolverConfig solver_cfg;
     solver_cfg.num_train_timesteps = 1000;
@@ -1640,9 +1671,52 @@ int tts_15b_generate(VibeVoiceModel*            model,
     all_latents.reserve(static_cast<size_t>(p.max_speech_frames) * cfg.latent);
 
     int  total_frames = 0;
+    int  control_steps_without_audio = 0;
     bool finished     = false;
 
     while (!finished && total_frames < p.max_speech_frames) {
+        if (is_kugelaudio) {
+            auto logits = detail::lm_head_logits_last(model->lm_head, hidden_last,
+                                                      hidden, cfg.vocab_size);
+            if (static_cast<int>(logits.size()) != cfg.vocab_size) {
+                VV_LOG_ERROR("tts_15b: failed to read KugelAudio speech-path logits");
+                return -14;
+            }
+            const int next_token = detail::select_kugelaudio_speech_token_from_logits(logits);
+            if (p.verbose) {
+                std::fprintf(stderr,
+                             "[tts_15b] next speech token=%d (start=%d diff=%d end=%d eos=%d)\n",
+                             next_token, kSpeech15bStartId, kSpeech15bDiffId,
+                             kSpeech15bEndId, kSpeech15bEosId);
+            }
+            if (detail::kugelaudio_token_stops_generation(next_token)) {
+                if (p.verbose) std::fprintf(stderr,
+                    "[tts_15b] speech_end/eos before diffusion at frame %d\n", total_frames);
+                finished = true;
+                break;
+            }
+            if (detail::kugelaudio_token_requires_cfg_reset(next_token)) {
+                std::vector<float> start_embed(static_cast<size_t>(hidden));
+                embed_row(w.lm_tok_embd, kSpeech15bStartId, hidden, start_embed.data());
+                if (!run_qwen2_stack(nullptr, cfg, w.lm_layers, w.tlm_output_norm,
+                                     lm_pos, /*n_new=*/1, start_embed.data(),
+                                     &kv_lm, nullptr, &hidden_last)) {
+                    VV_LOG_ERROR("tts_15b: LM speech_start step failed");
+                    return -13;
+                }
+                ++lm_pos;
+                if (use_cfg && !reset_kugelaudio_neg_branch()) {
+                    return -11;
+                }
+                if (++control_steps_without_audio > 32) {
+                    VV_LOG_ERROR("tts_15b: exceeded KugelAudio control-token guard without generating speech");
+                    return -15;
+                }
+                continue;
+            }
+            control_steps_without_audio = 0;
+        }
+
         // 7a. sample one speech latent via DPM-Solver, optionally with CFG.
         std::vector<float> z(cfg.latent);
         for (auto& v : z) v = norm(rng);
@@ -1686,29 +1760,25 @@ int tts_15b_generate(VibeVoiceModel*            model,
         }
         ++total_frames;
 
-        // 7d. speech-end detection from LM logits.
-        auto logits = detail::lm_head_logits_last(model->lm_head, hidden_last,
-                                                   hidden, cfg.vocab_size);
-        if (static_cast<int>(logits.size()) == cfg.vocab_size) {
-            const int best_id = is_kugelaudio
-                ? detail::select_kugelaudio_speech_token_from_logits(logits)
-                : [&logits, &cfg]() {
-                    int   best_id = 0;
-                    float best_v  = -std::numeric_limits<float>::infinity();
-                    for (int i = 0; i < cfg.vocab_size; ++i) {
-                        if (logits[i] > best_v) { best_v = logits[i]; best_id = i; }
-                    }
-                    return best_id;
-                }();
-            if (p.verbose && (total_frames % 8 == 0 || best_id == kSpeech15bEndId || best_id == kSpeech15bEosId)) {
-                std::fprintf(stderr,
-                             "[tts_15b] frame %d: constrained_next=%d (end=%d eos=%d)\n",
-                             total_frames, best_id, kSpeech15bEndId, kSpeech15bEosId);
-            }
-            if (best_id == kSpeech15bEndId || best_id == kSpeech15bEosId) {
-                if (p.verbose) std::fprintf(stderr,
-                    "[tts_15b] speech_end/eos at frame %d\n", total_frames);
-                finished = true;
+        // 7d. legacy non-KugelAudio speech-end detection from LM logits.
+        if (!is_kugelaudio) {
+            auto logits = detail::lm_head_logits_last(model->lm_head, hidden_last,
+                                                      hidden, cfg.vocab_size);
+            if (static_cast<int>(logits.size()) == cfg.vocab_size) {
+                int   best_id = 0;
+                float best_v  = -std::numeric_limits<float>::infinity();
+                for (int i = 0; i < cfg.vocab_size; ++i) {
+                    if (logits[i] > best_v) { best_v = logits[i]; best_id = i; }
+                }
+                if (p.verbose && (total_frames % 8 == 0 || best_id == kSpeech15bEndId)) {
+                    std::fprintf(stderr, "[tts_15b] frame %d: argmax=%d (end=%d)\n",
+                                 total_frames, best_id, kSpeech15bEndId);
+                }
+                if (best_id == kSpeech15bEndId) {
+                    if (p.verbose) std::fprintf(stderr,
+                        "[tts_15b] speech_end at frame %d\n", total_frames);
+                    finished = true;
+                }
             }
         }
     }

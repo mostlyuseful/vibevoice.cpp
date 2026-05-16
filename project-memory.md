@@ -182,3 +182,11 @@
   - derive EOS from whatever tokenizer happens to be loaded at runtime: cleaner later, but underconstrained in the current C++ load path and risks drifting from the checkpoint contract being ported
   - defer token constraining until the full canonical token-by-token loop lands: broader delay than needed for this focused parity increment
 - Affected area: `prd.md` Slice 3 / "The runtime constrains generation to the canonical speech-path token set.".
+
+### KugelAudio control-token loop guard
+- Context: aligning CFG control flow with canonical KugelAudio requires honoring `speech_start` as a non-audio control token that can reset the negative branch before the next diffusion step, but the current C++ runtime bounds generation by speech frames rather than total token steps.
+- Chosen default: allow up to 32 consecutive KugelAudio control-token steps without producing a speech frame before failing clearly, which preserves the frame-based API while preventing accidental infinite loops if the LM keeps emitting `speech_start`.
+- Rejected alternatives:
+  - leave control-token iterations unbounded: simpler, but risks a hung generation loop on a bad model state
+  - redesign the public API around a separate max-token budget in this slice: cleaner long-term, but broader than the current CFG-parity increment
+- Affected area: `prd.md` Slice 3 / "CFG behavior is aligned with the canonical implementation for the supported path.".

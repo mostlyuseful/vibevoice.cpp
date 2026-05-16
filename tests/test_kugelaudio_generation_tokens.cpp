@@ -41,6 +41,26 @@ int main() {
         return 4;
     }
 
+    if (!vv::detail::kugelaudio_token_requires_cfg_reset_for_test(
+            vv::detail::kugelaudio_speech_start_id_for_test())) {
+        std::fprintf(stderr, "FAIL: speech_start should trigger canonical KugelAudio CFG reset\n");
+        return 5;
+    }
+    if (vv::detail::kugelaudio_token_requires_cfg_reset_for_test(
+            vv::detail::kugelaudio_speech_diffusion_id_for_test())) {
+        std::fprintf(stderr, "FAIL: diffusion token should not trigger CFG reset\n");
+        return 6;
+    }
+    if (!vv::detail::kugelaudio_token_stops_generation_for_test(
+            vv::detail::kugelaudio_speech_end_id_for_test()) ||
+        !vv::detail::kugelaudio_token_stops_generation_for_test(
+            vv::detail::kugelaudio_eos_id_for_test()) ||
+        vv::detail::kugelaudio_token_stops_generation_for_test(
+            vv::detail::kugelaudio_speech_diffusion_id_for_test())) {
+        std::fprintf(stderr, "FAIL: canonical KugelAudio control-token classification mismatch\n");
+        return 7;
+    }
+
     std::printf("KugelAudio generation token constraints OK\n");
     return 0;
 }

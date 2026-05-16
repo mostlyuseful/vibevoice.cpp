@@ -148,7 +148,7 @@ Adapt the inference loop so it follows canonical KugelAudio behavior for valid-t
 
 AC:
 - [x] The runtime constrains generation to the canonical speech-path token set.
-- [ ] CFG behavior is aligned with the canonical implementation for the supported path.
+- [x] CFG behavior is aligned with the canonical implementation for the supported path.
 - [ ] Speech-end behavior is aligned with canonical handling and terminates correctly.
 - [ ] Final waveform decode path is integrated and produces usable output.
 
