@@ -121,8 +121,16 @@
 
 ### KugelAudio placeholder-position test fixture
 - Context: the next prompt sub-task requires placeholder positions to be stable and testable for fixed inputs, but the repo does not ship a reusable tokenizer GGUF fixture by default.
-- Chosen default: use a tiny synthetic byte-level tokenizer GGUF fixture for the prompt-position unit test, with the canonical speech special tokens registered at the KugelAudio IDs.
+- Chosen default: use a tiny synthetic byte-level tokenizer GGUF fixture for the prompt-position unit test, with the canonical speech special tokens registered at the Kugelaudio IDs.
 - Rejected alternatives:
   - depend on a full downloaded production tokenizer fixture: heavier and less hermetic for a small prompt-layout test
   - test only logical placeholder counts without token positions: too weak for the PRD item
 - Affected area: `prd.md` Slice 2 / "Placeholder positions are stable and testable for fixed inputs.".
+
+### KugelAudio CFG negative-token seed
+- Context: the remaining special-token PRD item requires removing VibeVoice-only token-role assumptions where KugelAudio differs. The current C++ CFG path still seeded the negative branch from a full prompt with `<|image_pad|>` replacements, while canonical KugelAudio inference seeds the negative branch from a single speech-start token.
+- Chosen default: for KugelAudio only, initialize the CFG negative branch from one `speech_start` token and keep the legacy image-pad placeholder path for non-KugelAudio 1.5B behavior.
+- Rejected alternatives:
+  - keep using the image-pad placeholder prompt for KugelAudio too: easier, but encodes a VibeVoice-specific prompt-token role that canonical KugelAudio does not use
+  - rewrite legacy VibeVoice 1.5B CFG in the same increment: broader than needed for the current KugelAudio-focused PRD item
+- Affected area: `prd.md` Slice 2 / "The runtime no longer assumes VibeVoice-only prompt token roles where KugelAudio differs.".

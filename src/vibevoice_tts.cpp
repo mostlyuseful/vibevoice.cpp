@@ -1304,6 +1304,10 @@ std::vector<int32_t> build_kugelaudio_inserted_speech_tokens_for_test(int vae_to
     return ids;
 }
 
+std::vector<int32_t> build_kugelaudio_negative_seed_tokens_for_test() {
+    return {kSpeech15bStartId};
+}
+
 void build_kugelaudio_prompt_input_ids_for_test(const Tokenizer& tokenizer,
                                                 int vae_tok_len,
                                                 const std::string& text,
@@ -1533,28 +1537,37 @@ int tts_15b_generate(VibeVoiceModel*            model,
             VV_LOG_ERROR("tts_15b: neg KV init failed");
             return -10;
         }
-        // Copy positive embeds, then overwrite every vision_pad
-        // position (across all speakers) with the image_pad embedding.
-        std::vector<float> neg_embeds(embeds);
-        std::vector<float> img_pad_embed(hidden);
-        embed_row(w.lm_tok_embd, kSpeech15bImgPadId, hidden, img_pad_embed.data());
-        for (int k = 0; k < total_Tc; ++k) {
-            const int pos = pad_positions[k];
-            std::memcpy(&neg_embeds[static_cast<size_t>(hidden) * pos],
-                        img_pad_embed.data(),
-                        sizeof(float) * hidden);
+        std::vector<float> neg_embeds;
+        int neg_prefill_tokens = 0;
+        if (is_kugelaudio) {
+            neg_embeds.resize(static_cast<size_t>(hidden));
+            embed_row(w.lm_tok_embd, kSpeech15bStartId, hidden, neg_embeds.data());
+            neg_prefill_tokens = 1;
+        } else {
+            // Legacy VibeVoice path: copy positive embeds, then overwrite every
+            // vision_pad position (across all speakers) with the image_pad embedding.
+            neg_embeds = embeds;
+            std::vector<float> img_pad_embed(hidden);
+            embed_row(w.lm_tok_embd, kSpeech15bImgPadId, hidden, img_pad_embed.data());
+            for (int k = 0; k < total_Tc; ++k) {
+                const int pos = pad_positions[k];
+                std::memcpy(&neg_embeds[static_cast<size_t>(hidden) * pos],
+                            img_pad_embed.data(),
+                            sizeof(float) * hidden);
+            }
+            neg_prefill_tokens = N;
         }
         if (!run_qwen2_stack(nullptr, cfg, w.lm_layers, w.tlm_output_norm,
-                             /*past_len=*/0, /*n_new=*/N, neg_embeds.data(),
+                             /*past_len=*/0, /*n_new=*/neg_prefill_tokens, neg_embeds.data(),
                              &kv_neg, /*all_hidden_out=*/nullptr,
                              &neg_hidden_last)) {
             VV_LOG_ERROR("tts_15b: neg prefill failed");
             return -11;
         }
-        neg_pos = N;
+        neg_pos = neg_prefill_tokens;
         if (p.verbose) std::fprintf(stderr,
             "[tts_15b] CFG on, scale=%.2f (neg branch prefilled %d tokens)\n",
-            static_cast<double>(p.cfg_scale), N);
+            static_cast<double>(p.cfg_scale), neg_prefill_tokens);
     } else if (p.verbose) {
         std::fprintf(stderr, "[tts_15b] CFG off (cfg_scale=%.2f)\n",
                      static_cast<double>(p.cfg_scale));

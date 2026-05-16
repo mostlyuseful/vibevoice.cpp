@@ -49,6 +49,12 @@ int main() {
         std::fprintf(stderr, "FAIL: inserted speech token semantics mismatch\n");
         return 5;
     }
+    const auto neg_seed = vv::detail::build_kugelaudio_negative_seed_tokens_for_test();
+    const std::vector<int32_t> expected_neg_seed = {151652};
+    if (neg_seed != expected_neg_seed) {
+        std::fprintf(stderr, "FAIL: KugelAudio CFG negative seed should be a single speech_start token\n");
+        return 6;
+    }
 
     const std::string prompt_prefixed = vv::detail::build_kugelaudio_prompt_single_speaker_for_test(
         1, "Speaker 0: Already tagged"
@@ -71,12 +77,12 @@ int main() {
     vv::ModelLoader loader;
     if (!loader.load(tok_path)) {
         std::fprintf(stderr, "FAIL: failed to load tokenizer fixture %s\n", tok_path);
-        return 6;
+        return 7;
     }
     vv::Tokenizer tok;
     if (!tok.load(loader)) {
         std::fprintf(stderr, "FAIL: tokenizer load failed for %s\n", tok_path);
-        return 7;
+        return 8;
     }
 
     std::vector<int32_t> input_ids;
@@ -94,17 +100,17 @@ int main() {
     };
     if (pad_positions != expected_pad_positions) {
         std::fprintf(stderr, "FAIL: pad positions mismatch\n");
-        return 8;
+        return 9;
     }
     for (int pos : pad_positions) {
         if (input_ids[pos] != vv::detail::kugelaudio_speech_diffusion_id_for_test()) {
             std::fprintf(stderr, "FAIL: pad position %d does not contain diffusion placeholder id\n", pos);
-            return 9;
+            return 10;
         }
     }
     if (input_ids.back() != vv::detail::kugelaudio_speech_start_id_for_test()) {
         std::fprintf(stderr, "FAIL: final prompt token is not speech_start\n");
-        return 10;
+        return 11;
     }
 
     std::printf("KugelAudio prompt builder OK\n");
