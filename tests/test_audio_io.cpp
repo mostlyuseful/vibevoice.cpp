@@ -124,7 +124,28 @@ int main() {
         return 12;
     }
 
-    std::printf("audio_io ok: roundtrip corr=%.4f, wav max-err=%.6f, ref_24k_mono=%zu samples\n",
-                corr, max_err, ref_24k_mono.size());
+    // Canonical reference-audio normalization: target -25 dBFS, then avoid clipping.
+    std::vector<float> quiet(24000, 0.01f);
+    vv::normalize_dbfs(&quiet);
+    double sq_norm = 0.0;
+    for (float v : quiet) sq_norm += static_cast<double>(v) * v;
+    const double rms_norm = std::sqrt(sq_norm / quiet.size());
+    const double target_lin = std::pow(10.0, -25.0 / 20.0);
+    if (std::fabs(rms_norm - target_lin) > 1e-3) {
+        std::fprintf(stderr, "normalize_dbfs target mismatch: rms=%f want=%f\n", rms_norm, target_lin);
+        return 13;
+    }
+
+    std::vector<float> loud(24000, 2.0f);
+    vv::normalize_dbfs(&loud);
+    float loud_max_abs = 0.0f;
+    for (float v : loud) loud_max_abs = std::max(loud_max_abs, std::fabs(v));
+    if (loud_max_abs > 1.0f + 1e-5f) {
+        std::fprintf(stderr, "normalize_dbfs clipping guard failed: max_abs=%f\n", loud_max_abs);
+        return 14;
+    }
+
+    std::printf("audio_io ok: roundtrip corr=%.4f, wav max-err=%.6f, ref_24k_mono=%zu samples, normalized_rms=%.6f\n",
+                corr, max_err, ref_24k_mono.size(), rms_norm);
     return 0;
 }

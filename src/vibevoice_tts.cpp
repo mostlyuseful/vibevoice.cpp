@@ -1387,23 +1387,8 @@ int tts_15b_generate(VibeVoiceModel*            model,
             return -3;
         }
 
-        // RMS-normalize to -25 dBFS — same convention the ASR encoder
-        // was trained against.
-        {
-            const float target_dB_FS = -25.0f, eps = 1e-6f;
-            double sq = 0.0;
-            for (float v : ref_audio) sq += static_cast<double>(v) * v;
-            const float rms = static_cast<float>(std::sqrt(sq / std::max<size_t>(ref_audio.size(), 1)));
-            const float target_lin = std::pow(10.0f, target_dB_FS / 20.0f);
-            const float scalar = target_lin / (rms + eps);
-            for (auto& v : ref_audio) v *= scalar;
-            float maxabs = 0.0f;
-            for (float v : ref_audio) maxabs = std::max(maxabs, std::fabs(v));
-            if (maxabs > 1.0f) {
-                const float clip_div = maxabs + eps;
-                for (auto& v : ref_audio) v /= clip_div;
-            }
-        }
+        // Match canonical KugelAudio raw-reference preprocessing.
+        normalize_dbfs(&ref_audio);
 
         // Acoustic + semantic encoders.
         std::vector<float> ac_lat, sm_lat;

@@ -26,6 +26,13 @@ int save_wav_pcm16(const std::string& path, const vv_audio& a);
 std::vector<float> resample_linear(const std::vector<float>& in,
                                    int src_rate, int dst_rate);
 
+// Canonical KugelAudio-style dBFS normalization used for raw reference audio.
+// Applies target-dB scaling, then scales down again only if needed to avoid
+// clipping.
+void normalize_dbfs(std::vector<float>* samples,
+                    float target_dB_FS = -25.0f,
+                    float eps = 1.0e-6f);
+
 // Convenience: read a WAV from disk and produce a 24 kHz mono float32 buffer.
 int load_wav_24k_mono(const std::string& path, std::vector<float>* out);
 
