@@ -374,7 +374,7 @@ def required_tensor_names_for_variant(cfg: dict[str, Any], variant: str) -> list
 
     dec = cfg["decoder_config"]
     ac = cfg["acoustic_tokenizer_config"]
-    sm = cfg.get("semantic_tokenizer_config") or ac
+    sm = resolve_semantic_config(cfg)
     dh = cfg.get("diffusion_head_config") or {}
 
     n_total = dec["num_hidden_layers"]
@@ -385,7 +385,7 @@ def required_tensor_names_for_variant(cfg: dict[str, Any], variant: str) -> list
     sm_enc_depths = _split_depths(sm.get("encoder_depths") or ac_enc_depths)
     head_layers = int(dh.get("head_layers", 4))
     n_downs = len(ac["encoder_ratios"])
-    n_sem_downs = len(sm.get("encoder_ratios") or ac["encoder_ratios"])
+    n_sem_downs = len(sm["encoder_ratios"])
     n_ups = len(ac["encoder_ratios"])
 
     required: list[str] = []
@@ -427,10 +427,23 @@ def validate_required_tensors(cfg: dict[str, Any], variant: str, tensor_names: l
         )
 
 
+def resolve_semantic_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    sm = cfg.get("semantic_tokenizer_config")
+    if sm:
+        return dict(sm)
+
+    ac = cfg["acoustic_tokenizer_config"]
+    return {
+        "vae_dim": cfg.get("semantic_vae_dim", ac.get("vae_dim", 64)),
+        "encoder_ratios": list(ac["encoder_ratios"]),
+        "encoder_depths": ac["encoder_depths"],
+    }
+
+
 def add_metadata(writer: Any, cfg: dict[str, Any], variant: str) -> None:
     dec = cfg["decoder_config"]
     ac = cfg["acoustic_tokenizer_config"]
-    sm = cfg.get("semantic_tokenizer_config") or {}
+    sm = resolve_semantic_config(cfg)
     dh = cfg.get("diffusion_head_config") or {}
 
     n_total = dec["num_hidden_layers"]
@@ -457,10 +470,9 @@ def add_metadata(writer: Any, cfg: dict[str, Any], variant: str) -> None:
     writer.add_array("kugelaudio.acoustic.encoder_ratios", list(ac["encoder_ratios"]))
     writer.add_array("kugelaudio.acoustic.encoder_depths", enc_depths)
     writer.add_array("kugelaudio.acoustic.decoder_depths", dec_depths)
-    if sm:
-        writer.add_uint32("kugelaudio.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 128)))
-        writer.add_array("kugelaudio.semantic.encoder_ratios", list(sm["encoder_ratios"]))
-        writer.add_array("kugelaudio.semantic.encoder_depths", _split_depths(sm["encoder_depths"]))
+    writer.add_uint32("kugelaudio.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 64)))
+    writer.add_array("kugelaudio.semantic.encoder_ratios", list(sm["encoder_ratios"]))
+    writer.add_array("kugelaudio.semantic.encoder_depths", _split_depths(sm["encoder_depths"]))
     if dh:
         writer.add_uint32("kugelaudio.diffusion.head_layers", dh.get("head_layers", 4))
         writer.add_float32("kugelaudio.diffusion.ffn_ratio", float(dh.get("head_ffn_ratio", 3.0)))
@@ -481,10 +493,9 @@ def add_metadata(writer: Any, cfg: dict[str, Any], variant: str) -> None:
     writer.add_array("vibevoice.acoustic.encoder_ratios", list(ac["encoder_ratios"]))
     writer.add_array("vibevoice.acoustic.encoder_depths", enc_depths)
     writer.add_array("vibevoice.acoustic.decoder_depths", dec_depths)
-    if sm:
-        writer.add_uint32("vibevoice.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 128)))
-        writer.add_array("vibevoice.semantic.encoder_ratios", list(sm["encoder_ratios"]))
-        writer.add_array("vibevoice.semantic.encoder_depths", _split_depths(sm["encoder_depths"]))
+    writer.add_uint32("vibevoice.semantic.vae_dim", sm.get("vae_dim", cfg.get("semantic_vae_dim", 64)))
+    writer.add_array("vibevoice.semantic.encoder_ratios", list(sm["encoder_ratios"]))
+    writer.add_array("vibevoice.semantic.encoder_depths", _split_depths(sm["encoder_depths"]))
     if dh:
         writer.add_uint32("vibevoice.diffusion.head_layers", dh.get("head_layers", 4))
         writer.add_float32("vibevoice.diffusion.ffn_ratio", float(dh.get("head_ffn_ratio", 3.0)))

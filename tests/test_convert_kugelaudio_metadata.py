@@ -95,6 +95,12 @@ class FakeGGUFModule:
 
 
 class ConverterTests(unittest.TestCase):
+    def test_resolve_semantic_config_uses_canonical_defaults_when_missing(self):
+        sm = MOD.resolve_semantic_config(KUGEL_7B_CFG)
+        self.assertEqual(sm["vae_dim"], 64)
+        self.assertEqual(sm["encoder_ratios"], [8, 5, 5, 4, 2, 2])
+        self.assertEqual(sm["encoder_depths"], "3-3-3-3-3-3-8")
+
     def test_required_tensor_contract_covers_v1_tts_path(self):
         required = MOD.required_tensor_names_for_variant(KUGEL_7B_CFG, "kugelaudio-0-open")
         for name in [
@@ -192,6 +198,9 @@ class ConverterTests(unittest.TestCase):
         self.assertEqual(writer.metadata["kugelaudio.checkpoint"], "kugelaudio-0-open")
         self.assertEqual(writer.metadata["kugelaudio.decoder.hidden_size"], 3584)
         self.assertEqual(writer.metadata["kugelaudio.diffusion.latent_size"], 64)
+        self.assertEqual(writer.metadata["kugelaudio.semantic.vae_dim"], 64)
+        self.assertEqual(writer.metadata["kugelaudio.semantic.encoder_ratios"], [8, 5, 5, 4, 2, 2])
+        self.assertEqual(writer.metadata["vibevoice.semantic.vae_dim"], 64)
         self.assertEqual(writer.metadata["vibevoice.variant"], "kugelaudio-0-open")
         self.assertIn("lm.tok_embd.weight", writer.tensors)
 

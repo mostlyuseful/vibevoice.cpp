@@ -38,3 +38,11 @@
   - validate against every remappable tensor in the checkpoint: too broad for the v1 acceptance path and harder to keep aligned with runtime reality
   - validate only metadata plus a few anchor tensors: too weak to guarantee end-to-end TTS loadability
 - Affected area: `prd.md` Slice 1 / "Map all required TTS tensors and metadata".
+
+### KugelAudio semantic metadata fallback
+- Context: the published KugelAudio config JSON does not serialize `semantic_tokenizer_config`, even though the canonical Python config class materializes semantic-tokenizer defaults and the v1 raw-reference path requires semantic conditioning.
+- Chosen default: derive semantic GGUF metadata from canonical default semantic-tokenizer behavior when the config omits `semantic_tokenizer_config`, using the same ratios/depths and `vae_dim=64` shape expected by the shipped open checkpoint.
+- Rejected alternatives:
+  - require `semantic_tokenizer_config` to be present in JSON: would reject the actual published checkpoint format
+  - omit semantic metadata entirely when the config omits it: would make future validation and loader behavior more ambiguous even though semantic tensors are required
+- Affected area: `prd.md` Slice 1 / semantic-conditioning tensor and metadata coverage.

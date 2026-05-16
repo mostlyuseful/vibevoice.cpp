@@ -41,7 +41,7 @@ Implement the Qwen backbone, diffusion head, acoustic tokenizer/decoder, semanti
 
 AC:
 - [x] All tensors needed by the v1 TTS path are mapped or intentionally rejected.
-- [ ] Semantic-conditioning-related tensors are included for the supported path.
+- [x] Semantic-conditioning-related tensors are included for the supported path.
 - [ ] Missing required tensors fail fast with actionable diagnostics.
 
 Testing:
