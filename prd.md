@@ -150,7 +150,7 @@ AC:
 - [x] The runtime constrains generation to the canonical speech-path token set.
 - [x] CFG behavior is aligned with the canonical implementation for the supported path.
 - [x] Speech-end behavior is aligned with canonical handling and terminates correctly.
-- [ ] Final waveform decode path is integrated and produces usable output.
+- [x] Final waveform decode path is integrated and produces usable output.
 
 Testing:
 - Unit: token-constraint logic, CFG branch behavior, speech-end decision logic.

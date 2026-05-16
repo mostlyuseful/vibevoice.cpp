@@ -198,3 +198,11 @@
   - leave the penalty at zero until a public setting is plumbed: simpler, but knowingly diverges from canonical stop behavior
   - add a new public API/CLI parameter in this slice: potentially useful later, but broader than the current parity-only increment
 - Affected area: `prd.md` Slice 3 / "Speech-end behavior is aligned with canonical handling and terminates correctly.".
+
+### KugelAudio final-decode validation scope
+- Context: the next Slice 3 item requires proving the final waveform decode path produces usable output, but the lightweight synthetic KugelAudio GGUF fixture only carries zero-valued placeholder tensors and is not numerically valid for decoder execution.
+- Chosen default: validate this acceptance item with a real-model gated smoke test that runs the supported KugelAudio path end-to-end through final latent decode and checks for non-empty, finite, non-silent waveform output.
+- Rejected alternatives:
+  - pretend the synthetic fixture proves decoder usability: fast, but misleading because its tensors are not shape/value-valid for real decoder execution
+  - defer all decode validation to the later divergence harness: too late for this slice's explicit acceptance item
+- Affected area: `prd.md` Slice 3 / "Final waveform decode path is integrated and produces usable output.".
