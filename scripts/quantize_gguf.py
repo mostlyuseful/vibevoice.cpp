@@ -1,4 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "gguf"
+# ]
+# ///
+
 """Quantize a vibevoice gguf in place.
 
 Walks the source gguf and rewrites it with a new dtype for the heavy LM

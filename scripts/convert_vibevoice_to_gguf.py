@@ -1,4 +1,16 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "gguf",
+#     "safetensors",
+#     "torch",
+# ]
+#
+# [[tool.uv.index]]
+# url = "https://download.pytorch.org/whl/cpu"
+# ///
+
 """Convert a VibeVoice or KugelAudio safetensors checkpoint to a single .gguf.
 
 KugelAudio v1 support is intentionally narrow: the converter accepts only the
@@ -23,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+import torch
 
 
 # ---------- key rewrite table ----------
@@ -214,7 +227,7 @@ SUPPORTED_KUGELAUDIO_SIGNATURE = {
     "decoder_num_attention_heads": 28,
     "decoder_num_key_value_heads": 4,
     "decoder_vocab_size": 152064,
-    "tts_backbone_num_hidden_layers": 20,
+    "tts_backbone_num_hidden_layers": None,
     "acoustic_vae_dim": 64,
     "diffusion_latent_size": 64,
 }
@@ -250,8 +263,11 @@ def _to_dtype(arr: np.ndarray, dtype: str) -> np.ndarray:
 
 
 def _tensor_to_numpy(t: Any, dtype: str) -> np.ndarray:
-    has_np_bfloat16 = hasattr(np, "bfloat16")
-    if has_np_bfloat16 and getattr(t, "dtype", None) == np.dtype("bfloat16"):
+    # PyTorch tensors with bfloat16 can't call .numpy() directly.
+    # Convert to float32 (or numpy bfloat16 if available) first.
+    if getattr(t, "dtype", None) == getattr(torch, "bfloat16", None):
+        t = t.float()
+    elif hasattr(np, "bfloat16") and getattr(t, "dtype", None) == np.dtype("bfloat16"):
         t = t.float()
     arr = t.cpu().numpy() if hasattr(t, "cpu") else np.asarray(t)
     return _to_dtype(np.asarray(arr), dtype)
@@ -540,6 +556,26 @@ def add_metadata(writer: Any, cfg: dict[str, Any], variant: str) -> None:
     writer.add_uint32("vibevoice.sample_rate", 24000)
 
 
+def _tensor_info_nbytes(shape: list[int], out_dtype: np.dtype) -> int:
+    """Number of bytes for a tensor in the output GGUF."""
+    elem_size = 2 if out_dtype == np.float16 else 4
+    count = 1
+    for s in shape:
+        count *= s
+    return count * elem_size
+
+
+def _output_details(shape: list[int], fmt: str) -> tuple[np.dtype, int]:
+    """Return (output_numpy_dtype, nbytes) given --dtype fmt."""
+    if fmt == "fp32":
+        return np.float32, _tensor_info_nbytes(shape, np.float32)
+    elem_count = 1
+    for s in shape:
+        elem_count *= s
+    out_dtype = np.float16 if elem_count > 1 else np.float32
+    return out_dtype, _tensor_info_nbytes(shape, out_dtype)
+
+
 def convert_checkpoint(
     src: Path,
     out: Path,
@@ -552,22 +588,27 @@ def convert_checkpoint(
     with open(src / "config.json", "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    tensors: list[tuple[str, np.ndarray]] = []
-    unmapped: list[str] = []
     files = sorted(src.glob("model*.safetensors"))
     if not files:
         sys.stderr.write(f"error: no model*.safetensors under {src}\n")
         return 1
 
+    # ── Phase 1: scan tensor metadata (names, shapes, nbytes) without loading data ──
+    # meta entries are ordered to match safetensors iteration so the data pass
+    # (Phase 3) can call write_tensor_data() in lockstep.
+    meta: list[tuple[str, list[int], np.dtype, int]] = []
+    unmapped: list[str] = []
     for f in files:
-        with safe_open_fn(str(f), framework="pt") as fh:
+        with safe_open_fn(str(f), framework="numpy") as fh:
             for k in fh.keys():
-                arr = _tensor_to_numpy(fh.get_tensor(k), dtype)
+                sl = fh.get_slice(k)
+                shape = sl.get_shape()
                 new = remap(k)
                 if new is None:
                     unmapped.append(k)
                     continue
-                tensors.append((new, arr))
+                out_dtype, nbytes = _output_details(shape, dtype)
+                meta.append((new, shape, out_dtype, nbytes))
 
     if unmapped:
         msg = (f"warning: {len(unmapped)} unmapped keys (first 10):\n"
@@ -576,7 +617,7 @@ def convert_checkpoint(
         if strict:
             return 2
 
-    tnames = [t[0] for t in tensors]
+    tnames = [m[0] for m in meta]
     try:
         variant = detect_variant(cfg, tnames)
     except ValueError as e:
@@ -584,31 +625,58 @@ def convert_checkpoint(
         return 3
 
     dec = cfg["decoder_config"]
+    synthesize_lm_head = False
     if (
         variant == "1.5b"
         and dec.get("tie_word_embeddings", False)
         and not any(k.startswith("lm_head") for k in tnames)
     ):
-        embd = next((arr for n, arr in tensors if n == "lm.tok_embd.weight"), None)
-        if embd is None:
+        tok_meta = next((m for m in meta if m[0] == "lm.tok_embd.weight"), None)
+        if tok_meta is None:
             sys.stderr.write("error: 1.5b variant missing lm.tok_embd.weight; cannot synthesise tied lm_head\n")
             return 4
-        tensors.append(("lm_head.weight", embd))
+        meta.append(("lm_head.weight", tok_meta[1], tok_meta[2], tok_meta[3]))
+        synthesize_lm_head = True
 
     try:
-        validate_required_tensors(cfg, variant, [name for name, _ in tensors])
+        validate_required_tensors(cfg, variant, [m[0] for m in meta])
     except ValueError as e:
         sys.stderr.write(f"error: {e}\n")
         return 5
 
+    # ── Phase 2: write GGUF header, KV metadata, and tensor info ──
     out.parent.mkdir(parents=True, exist_ok=True)
     writer = gguf_module.GGUFWriter(str(out), arch="vibevoice")
     add_metadata(writer, cfg, variant)
-    for n, arr in tensors:
-        writer.add_tensor(n, arr)
+    for name, shape, out_dtype, nbytes in meta:
+        writer.add_tensor_info(name, shape, out_dtype, nbytes)
+    writer.open_output_file()
     writer.write_header_to_file()
     writer.write_kv_data_to_file()
-    writer.write_tensors_to_file()
+    writer.write_ti_data_to_file()
+
+    # ── Phase 3: load + write one tensor at a time ──
+    for f in files:
+        with safe_open_fn(str(f), framework="pt") as fh:
+            for k in fh.keys():
+                new = remap(k)
+                if new is None:
+                    continue
+                arr = _tensor_to_numpy(fh.get_tensor(k), dtype)
+                writer.write_tensor_data(arr)
+
+    if synthesize_lm_head:
+        embd_name = "model.language_model.embed_tokens.weight"
+        for f in files:
+            with safe_open_fn(str(f), framework="pt") as fh:
+                if embd_name in fh.keys():
+                    arr = _tensor_to_numpy(fh.get_tensor(embd_name), dtype)
+                    break
+        else:
+            sys.stderr.write("error: cannot find embed_tokens.weight for tied lm_head\n")
+            return 6
+        writer.write_tensor_data(arr)
+
     writer.close()
 
     n_total = dec["num_hidden_layers"]
@@ -617,7 +685,7 @@ def convert_checkpoint(
     mode = "kugelaudio" if is_kugelaudio else "vibevoice"
     sys.stderr.write(
         f"convert: mode={mode} checkpoint={variant} src={src}\n"
-        f"convert: wrote {out}: {len(tensors)} tensors  (unmapped={len(unmapped)})  "
+        f"convert: wrote {out}: {len(meta)} tensors  (unmapped={len(unmapped)})  "
         f"hidden={dec['hidden_size']} lm_layers={n_total - n_tts_layers}+{n_tts_layers} "
         f"vocab={dec['vocab_size']} dtype={dtype}\n"
     )

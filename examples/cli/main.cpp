@@ -1,11 +1,14 @@
 // vibevoice-cli — text-to-speech and (later) ASR command-line front-end.
 
 #include "audio_io.hpp"
+#include "backend.hpp"
 #include "model_loader.hpp"
 #include "tokenizer.hpp"
 #include "vibevoice.h"
 #include "vibevoice_asr.hpp"
 #include "vibevoice_tts.hpp"
+
+#include "ggml-cpu.h"
 
 #include <algorithm>
 #include <chrono>
@@ -45,6 +48,7 @@ void print_usage(const char* argv0) {
         "  --cfg X             classifier-free guidance scale (default 1.3,\n"
         "                      1.0 disables CFG)\n"
         "  --seed N            RNG seed for noise (default random)\n"
+        "  --threads N         CPU thread count (default auto)\n"
         "  --verbose           print per-frame progress\n"
         "\n"
         "asr options:\n"
@@ -88,6 +92,7 @@ int cmd_tts(int argc, char** argv) {
     float cfg_scale = 1.3f;
     uint32_t seed = 0;
     bool  verbose = false;
+    int   n_threads = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -102,6 +107,7 @@ int cmd_tts(int argc, char** argv) {
         else if (a == "--steps"      && (i + 1 < argc)) { steps      = std::atoi(argv[++i]); }
         else if (a == "--seed"       && (i + 1 < argc)) { seed       = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10)); }
         else if (a == "--cfg"        && (i + 1 < argc)) { cfg_scale = static_cast<float>(std::atof(argv[++i])); }
+        else if (a == "--threads"    && (i + 1 < argc)) { n_threads  = std::atoi(argv[++i]); }
         else if (a == "--verbose")                       { verbose = true; }
         else if (a == "-h" || a == "--help") {
             std::fprintf(stderr, "see `%s help`\n", argv[0]); return 0;
@@ -115,6 +121,11 @@ int cmd_tts(int argc, char** argv) {
     if (model_path.empty() || tok_path.empty()) {
         std::fprintf(stderr, "tts: --model and --tokenizer are required\n");
         return 1;
+    }
+
+    if (n_threads > 0) {
+        ggml_backend_cpu_set_n_threads(vv::backend(), n_threads);
+        std::fprintf(stderr, "tts: cpu threads = %d\n", n_threads);
     }
     if (!voice_path.empty() && !ref_audio.empty()) {
         std::fprintf(stderr, "tts: --voice and --ref-audio are mutually exclusive\n");
