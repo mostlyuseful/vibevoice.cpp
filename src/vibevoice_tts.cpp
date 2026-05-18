@@ -13,11 +13,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <initializer_list>
 #include <limits>
 #include <random>
 #include <regex>
 #include <string>
+#include <vector>
 
 namespace vv {
 
@@ -128,6 +131,152 @@ bool load_qwen2_stack(const ModelLoader& m, const std::string& prefix,
         }
     }
     return true;
+}
+
+const char* kugelaudio_dump_dir_env() {
+    return std::getenv("VIBEVOICE_KUGELAUDIO_DUMP_DIR");
+}
+
+bool kugelaudio_dump_enabled() {
+    const char* dir = kugelaudio_dump_dir_env();
+    return dir && *dir;
+}
+
+bool kugelaudio_dump_stage_allowed(const std::string& stage) {
+    const char* filter = std::getenv("VIBEVOICE_KUGELAUDIO_DUMP_FILTER");
+    if (!filter || !*filter) return true;
+    std::string f(filter);
+    size_t start = 0;
+    while (start <= f.size()) {
+        size_t end = f.find(',', start);
+        if (end == std::string::npos) end = f.size();
+        std::string token = f.substr(start, end - start);
+        const size_t left = token.find_first_not_of(" \t\n\r");
+        if (left == std::string::npos) {
+            token.clear();
+        } else {
+            const size_t right = token.find_last_not_of(" \t\n\r");
+            token = token.substr(left, right - left + 1);
+        }
+        if (!token.empty() && stage.find(token) != std::string::npos) return true;
+        if (end == f.size()) break;
+        start = end + 1;
+    }
+    return false;
+}
+
+std::string kugelaudio_dump_escape_json(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out += c; break;
+        }
+    }
+    return out;
+}
+
+void kugelaudio_dump_write_meta(const std::filesystem::path& meta_path,
+                                const std::string& stage,
+                                const std::vector<size_t>& shape,
+                                const char* dtype,
+                                const char* semantic,
+                                const char* source = "ggml") {
+    std::ofstream meta(meta_path, std::ios::binary);
+    if (!meta) return;
+    meta << "{\n";
+    meta << "  \"stage\": \"" << kugelaudio_dump_escape_json(stage) << "\",\n";
+    meta << "  \"shape\": [";
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (i) meta << ", ";
+        meta << shape[i];
+    }
+    meta << "],\n";
+    meta << "  \"dtype\": \"" << dtype << "\",\n";
+    meta << "  \"layout\": \"row_major\",\n";
+    meta << "  \"semantic\": \"" << kugelaudio_dump_escape_json(semantic ? semantic : "") << "\",\n";
+    meta << "  \"source\": \"" << source << "\"\n";
+    meta << "}\n";
+}
+
+void kugelaudio_dump_blob(const std::string& stage,
+                          const void* data,
+                          size_t bytes,
+                          const std::vector<size_t>& shape,
+                          const char* dtype,
+                          const char* semantic) {
+    if (!kugelaudio_dump_enabled() || !kugelaudio_dump_stage_allowed(stage)) return;
+    const std::filesystem::path dir(kugelaudio_dump_dir_env());
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    const auto bin_path  = dir / (stage + ".bin");
+    const auto meta_path = dir / (stage + ".json");
+    std::ofstream bin(bin_path, std::ios::binary);
+    if (!bin) return;
+    bin.write(static_cast<const char*>(data), static_cast<std::streamsize>(bytes));
+    bin.close();
+    kugelaudio_dump_write_meta(meta_path, stage, shape, dtype, semantic);
+}
+
+void kugelaudio_dump_f32_matrix(const std::string& stage,
+                                const std::vector<float>& data,
+                                size_t rows,
+                                size_t cols,
+                                const char* semantic) {
+    kugelaudio_dump_blob(stage, data.data(), data.size() * sizeof(float), {rows, cols}, "float32", semantic);
+}
+
+void kugelaudio_dump_f32_vector(const std::string& stage,
+                                const std::vector<float>& data,
+                                const char* semantic) {
+    kugelaudio_dump_blob(stage, data.data(), data.size() * sizeof(float), {data.size()}, "float32", semantic);
+}
+
+void kugelaudio_dump_i32_vector(const std::string& stage,
+                                const std::vector<int32_t>& data,
+                                const char* semantic) {
+    kugelaudio_dump_blob(stage, data.data(), data.size() * sizeof(int32_t), {data.size()}, "int32", semantic);
+}
+
+void kugelaudio_dump_int_vector(const std::string& stage,
+                                const std::vector<int>& data,
+                                const char* semantic) {
+    std::vector<int32_t> tmp(data.begin(), data.end());
+    kugelaudio_dump_i32_vector(stage, tmp, semantic);
+}
+
+void kugelaudio_dump_i32_scalar(const std::string& stage,
+                                int32_t value,
+                                const char* semantic) {
+    kugelaudio_dump_blob(stage, &value, sizeof(value), {1}, "int32", semantic);
+}
+
+std::vector<float> kugelaudio_align_semantic_features(const std::vector<float>& semantic,
+                                                      int semantic_dim,
+                                                      int semantic_T,
+                                                      int acoustic_T) {
+    if (semantic_dim <= 0 || acoustic_T <= 0) return {};
+    std::vector<float> out(static_cast<size_t>(semantic_dim) * static_cast<size_t>(acoustic_T), 0.0f);
+    const int copy_T = std::min(semantic_T, acoustic_T);
+    if (copy_T > 0) {
+        std::memcpy(out.data(), semantic.data(), sizeof(float) * static_cast<size_t>(semantic_dim) * static_cast<size_t>(copy_T));
+    }
+    return out;
+}
+
+std::vector<float> kugelaudio_apply_acoustic_scale_bias(const std::vector<float>& acoustic,
+                                                        const VibeVoiceConfig& cfg) {
+    std::vector<float> out = acoustic;
+    if (std::isnan(cfg.speech_scaling)) return out;
+    for (float& v : out) {
+        v = (v + cfg.speech_bias) * cfg.speech_scaling;
+    }
+    return out;
 }
 
 }  // namespace
@@ -1502,6 +1651,10 @@ int tts_15b_generate(VibeVoiceModel*            model,
 
         // Match canonical KugelAudio raw-reference preprocessing.
         normalize_dbfs(&ref_audio);
+        if (is_kugelaudio) {
+            kugelaudio_dump_f32_vector("00_ref_audio_post_norm", ref_audio,
+                                       "normalized 24kHz mono reference audio");
+        }
 
         // Acoustic + semantic encoders.
         std::vector<float> ac_lat, sm_lat;
@@ -1510,12 +1663,41 @@ int tts_15b_generate(VibeVoiceModel*            model,
                                       &ac_lat, &Tc_a)) return -4;
         if (!detail::run_encoder_buf(model->st_enc, model->semantic_cfg, ref_audio,
                                       &sm_lat, &Tc_s)) return -4;
-        if (Tc_a != Tc_s) {
-            VV_LOG_ERROR("tts_15b: encoder frame mismatch on speaker %zu (%d vs %d)",
-                         s, Tc_a, Tc_s);
-            return -5;
+        if (is_kugelaudio) {
+            kugelaudio_dump_f32_matrix("01_acoustic_encoder_out", ac_lat,
+                                       static_cast<size_t>(Tc_a), static_cast<size_t>(cfg.vae_dim),
+                                       "C++ acoustic encoder output before any canonical sampling stage");
+            kugelaudio_dump_f32_matrix("02_semantic_encoder_out", sm_lat,
+                                       static_cast<size_t>(Tc_s), static_cast<size_t>(model->semantic_vae_dim),
+                                       "C++ semantic encoder output prior to canonical length alignment");
         }
-        const int Tc = Tc_a;
+
+        std::vector<float> sm_lat_aligned;
+        int Tc = Tc_a;
+        if (is_kugelaudio) {
+            sm_lat_aligned = kugelaudio_align_semantic_features(sm_lat,
+                                                                model->semantic_vae_dim,
+                                                                Tc_s,
+                                                                Tc_a);
+            kugelaudio_dump_f32_matrix("03_semantic_aligned", sm_lat_aligned,
+                                       static_cast<size_t>(Tc_a), static_cast<size_t>(model->semantic_vae_dim),
+                                       "semantic features after canonical pad/truncate to acoustic length");
+        } else {
+            if (Tc_a != Tc_s) {
+                VV_LOG_ERROR("tts_15b: encoder frame mismatch on speaker %zu (%d vs %d)",
+                             s, Tc_a, Tc_s);
+                return -5;
+            }
+            sm_lat_aligned = sm_lat;
+        }
+
+        std::vector<float> ac_cond = ac_lat;
+        if (is_kugelaudio) {
+            ac_cond = kugelaudio_apply_acoustic_scale_bias(ac_lat, cfg);
+            kugelaudio_dump_f32_matrix("04_acoustic_after_scale_bias", ac_cond,
+                                       static_cast<size_t>(Tc), static_cast<size_t>(cfg.vae_dim),
+                                       "acoustic conditioning features after canonical bias/scale step");
+        }
 
         if (is_kugelaudio && should_short_circuit_after_conditioning_for_test()) {
             VV_LOG_INFO("tts_15b: test hook stopping after preprocessing+conditioning encoders (single_ref_frames=%d)", Tc);
@@ -1526,10 +1708,18 @@ int tts_15b_generate(VibeVoiceModel*            model,
         // Connectors -> per-frame [hidden] speech features.
         auto ac_emb = detail::run_connector(w.ac_fc1_w, w.ac_fc1_b, w.ac_norm,
                                              w.ac_fc2_w, w.ac_fc2_b,
-                                             ac_lat, cfg.vae_dim, Tc, hidden);
+                                             ac_cond, cfg.vae_dim, Tc, hidden);
         auto sm_emb = detail::run_connector(model->sc_fc1_w, model->sc_fc1_b, model->sc_norm,
                                              model->sc_fc2_w, model->sc_fc2_b,
-                                             sm_lat, model->semantic_vae_dim, Tc, hidden);
+                                             sm_lat_aligned, model->semantic_vae_dim, Tc, hidden);
+        if (is_kugelaudio) {
+            kugelaudio_dump_f32_matrix("05_acoustic_connector_out", ac_emb,
+                                       static_cast<size_t>(Tc), static_cast<size_t>(hidden),
+                                       "acoustic connector output in [T, hidden]");
+            kugelaudio_dump_f32_matrix("06_semantic_connector_out", sm_emb,
+                                       static_cast<size_t>(Tc), static_cast<size_t>(hidden),
+                                       "semantic connector output in [T, hidden]");
+        }
         if (ac_emb.size() != sm_emb.size()
             || ac_emb.size() != static_cast<size_t>(hidden) * Tc) {
             VV_LOG_ERROR("tts_15b: connector output size mismatch on speaker %zu", s);
@@ -1540,6 +1730,11 @@ int tts_15b_generate(VibeVoiceModel*            model,
         if (!detail::fuse_conditioning_features(ac_emb, sm_emb, hidden, Tc, &fused_features)) {
             VV_LOG_ERROR("tts_15b: failed to fuse acoustic + semantic conditioning on speaker %zu", s);
             return -6;
+        }
+        if (is_kugelaudio) {
+            kugelaudio_dump_f32_matrix("07_fused_speech_features", fused_features,
+                                       static_cast<size_t>(Tc), static_cast<size_t>(hidden),
+                                       "fused acoustic + semantic speech conditioning features");
         }
 
         const size_t base = speech_features.size();
@@ -1573,6 +1768,12 @@ int tts_15b_generate(VibeVoiceModel*            model,
         VV_LOG_ERROR("tts_15b: tokenizer returned no tokens");
         return -7;
     }
+    if (is_kugelaudio) {
+        kugelaudio_dump_i32_vector("08_prompt_input_ids", input_ids,
+                                   "tokenized KugelAudio prompt input ids");
+        kugelaudio_dump_int_vector("09_pad_positions", pad_positions,
+                                   "positions replaced by speech conditioning embeddings");
+    }
     const int N = static_cast<int>(input_ids.size());
 
     if (static_cast<int>(pad_positions.size()) != total_Tc) {
@@ -1595,6 +1796,11 @@ int tts_15b_generate(VibeVoiceModel*            model,
         }
         embed_row(w.lm_tok_embd, id, hidden, &embeds[hidden * t]);
     }
+    if (is_kugelaudio) {
+        kugelaudio_dump_f32_matrix("10_prompt_embeds_pre_splice", embeds,
+                                   static_cast<size_t>(N), static_cast<size_t>(hidden),
+                                   "prompt token embeddings before speech-feature splice");
+    }
     // pad_positions is in document order, which is also speaker order
     // (build_prompt_15b emits all of speaker 0's vision_pads first,
     // then speaker 1's, ...). So the k-th pad gets the k-th feature
@@ -1604,6 +1810,11 @@ int tts_15b_generate(VibeVoiceModel*            model,
         std::memcpy(&embeds[static_cast<size_t>(hidden) * pos],
                     &speech_features[static_cast<size_t>(hidden) * k],
                     sizeof(float) * hidden);
+    }
+    if (is_kugelaudio) {
+        kugelaudio_dump_f32_matrix("11_prompt_embeds_post_splice", embeds,
+                                   static_cast<size_t>(N), static_cast<size_t>(hidden),
+                                   "prompt embeddings after inserting speech conditioning features");
     }
 
     // ---- 6. resident KV cache + LM prefill ----
@@ -1620,6 +1831,10 @@ int tts_15b_generate(VibeVoiceModel*            model,
                          &kv_lm, /*all_hidden_out=*/nullptr, &hidden_last)) {
         VV_LOG_ERROR("tts_15b: prefill LM forward failed");
         return -11;
+    }
+    if (is_kugelaudio) {
+        kugelaudio_dump_f32_vector("12_prefill_hidden_last_pos", hidden_last,
+                                   "last hidden state after positive prefill");
     }
     int lm_pos = N;
 
@@ -1683,6 +1898,10 @@ int tts_15b_generate(VibeVoiceModel*            model,
             return -11;
         }
         neg_pos = neg_prefill_tokens;
+        if (is_kugelaudio) {
+            kugelaudio_dump_f32_vector("13_prefill_hidden_last_neg", neg_hidden_last,
+                                       "last hidden state after negative/CFG prefill");
+        }
         if (p.verbose) std::fprintf(stderr,
             "[tts_15b] CFG on, scale=%.2f (neg branch prefilled %d tokens)\n",
             static_cast<double>(p.cfg_scale), neg_prefill_tokens);
@@ -1731,6 +1950,8 @@ int tts_15b_generate(VibeVoiceModel*            model,
     int  total_frames = 0;
     int  control_steps_without_audio = 0;
     bool finished     = false;
+    bool dumped_first_logits = false;
+    bool dumped_first_diffusion = false;
 
     while (!finished && total_frames < p.max_speech_frames) {
         if (is_kugelaudio) {
@@ -1742,6 +1963,13 @@ int tts_15b_generate(VibeVoiceModel*            model,
             }
             detail::apply_kugelaudio_speech_end_penalty(&logits);
             const int next_token = detail::select_kugelaudio_speech_token_from_logits(logits);
+            if (is_kugelaudio && !dumped_first_logits) {
+                kugelaudio_dump_f32_vector("14_first_logits", logits,
+                                           "first constrained/penalized logits before speech-token selection");
+                kugelaudio_dump_i32_scalar("15_first_selected_token", next_token,
+                                           "selected first speech-path control token");
+                dumped_first_logits = true;
+            }
             if (p.verbose) {
                 std::fprintf(stderr,
                              "[tts_15b] next speech token=%d (start=%d diff=%d end=%d eos=%d)\n",
@@ -1785,6 +2013,14 @@ int tts_15b_generate(VibeVoiceModel*            model,
 
         std::vector<float> cond_neg;
         if (use_cfg) cond_neg.assign(neg_hidden_last.begin(), neg_hidden_last.end());
+        if (is_kugelaudio && !dumped_first_diffusion) {
+            kugelaudio_dump_f32_vector("16_first_diffusion_cond_pos", cond,
+                                       "positive conditioning vector for first diffusion sample");
+            if (use_cfg) {
+                kugelaudio_dump_f32_vector("17_first_diffusion_cond_neg", cond_neg,
+                                           "negative conditioning vector for first diffusion sample");
+            }
+        }
 
         if (dpm_solver_sample(z, cfg.latent, /*frames=*/1, /*batch=*/1,
                               cond, hidden,
@@ -1794,9 +2030,18 @@ int tts_15b_generate(VibeVoiceModel*            model,
             return -12;
         }
         all_latents.insert(all_latents.end(), z.begin(), z.end());
+        if (is_kugelaudio && !dumped_first_diffusion) {
+            kugelaudio_dump_f32_vector("18_first_diffusion_latent", z,
+                                       "first diffusion-sampled latent before acoustic decode unscale");
+        }
 
         // 7b. project latent -> next-step LM input embedding.
         auto step_embed = run_speech_connector(cfg, w, z.data(), /*batch=*/1);
+        if (is_kugelaudio && !dumped_first_diffusion) {
+            kugelaudio_dump_f32_vector("19_first_step_embed", step_embed,
+                                       "next-step embedding produced from first diffusion latent via acoustic connector");
+            dumped_first_diffusion = true;
+        }
 
         // 7c. step LM by 1 position with the speech embedding (positive).
         if (!run_qwen2_stack(nullptr, cfg, w.lm_layers, w.tlm_output_norm,
