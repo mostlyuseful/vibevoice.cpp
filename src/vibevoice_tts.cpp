@@ -279,12 +279,26 @@ std::vector<float> kugelaudio_align_semantic_features(const std::vector<float>& 
     return out;
 }
 
+std::string kugelaudio_acoustic_sampling_mode() {
+    const char* v = std::getenv("VIBEVOICE_KUGELAUDIO_ACOUSTIC_MODE");
+    if (!v || !*v) return "sample";
+    return std::string(v);
+}
+
 std::vector<float> kugelaudio_sample_acoustic_features(const std::vector<float>& mean,
                                                         float fix_std,
                                                         const std::string& dist_type,
                                                         std::mt19937& rng) {
     std::vector<float> out = mean;
     if (out.empty()) return out;
+
+    const std::string mode = kugelaudio_acoustic_sampling_mode();
+    if (mode == "mean") return out;
+    if (mode != "sample") {
+        VV_LOG_WARN("tts_15b: unknown VIBEVOICE_KUGELAUDIO_ACOUSTIC_MODE=%s, falling back to sample",
+                    mode.c_str());
+    }
+
     if (dist_type == "none" || fix_std == 0.0f) return out;
 
     std::normal_distribution<float> norm(0.0f, 1.0f);

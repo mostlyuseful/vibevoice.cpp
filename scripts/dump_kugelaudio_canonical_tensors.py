@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cfg-scale", type=float, default=1.0)
     p.add_argument("--max-new-tokens", type=int, default=128)
     p.add_argument("--speech-end-penalty", type=float, default=1.5)
+    p.add_argument("--acoustic-mode", choices=["sample", "mean"], default="sample")
     p.add_argument("--stop-after", choices=["conditioning", "prefill", "first_diffusion"], default="first_diffusion")
     return p.parse_args()
 
@@ -146,9 +147,12 @@ def main() -> int:
         dump_f32(dump_dir, "01_acoustic_encoder_out_raw", to_row_major_tc(acoustic_raw),
                  "canonical acoustic encoder output prior to sampling")
 
-        acoustic_features, _ = model.acoustic_tokenizer.sampling(acoustic_output)
+        if args.acoustic_mode == "mean":
+            acoustic_features = acoustic_output.mean
+        else:
+            acoustic_features, _ = model.acoustic_tokenizer.sampling(acoustic_output)
         dump_f32(dump_dir, "02_acoustic_features_after_sampling", to_row_major_tc(acoustic_features),
-                 "canonical acoustic features after tokenizer sampling")
+                 f"canonical acoustic features after tokenizer sampling mode={args.acoustic_mode}")
 
         semantic_output = model.semantic_tokenizer.encode(speech_tensors)
         semantic_features = semantic_output.mean
