@@ -55,9 +55,11 @@ struct VibeVoiceConfig {
     int     head_layers   = 4;
     float   ffn_ratio     = 3.0f;
     int     freq_size     = 256;
-    // Acoustic decoder
+    // Acoustic decoder / conditioning
     int     vae_dim       = 64;
     AcousticConfig acoustic;
+    float   acoustic_fix_std = 0.0f;
+    std::string acoustic_std_dist_type = "none";
     // Audio
     int     sample_rate   = 24000;
     // Speech latent normalization

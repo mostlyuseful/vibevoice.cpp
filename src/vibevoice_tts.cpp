@@ -60,6 +60,16 @@ std::vector<int32_t> get_meta_i32_array_any(const ModelLoader& m,
     return {};
 }
 
+std::string get_meta_str_any(const ModelLoader& m,
+                             std::initializer_list<const char*> keys,
+                             const std::string& def = {}) {
+    for (const char* key : keys) {
+        auto value = m.get_str(key, "");
+        if (!value.empty()) return value;
+    }
+    return def;
+}
+
 bool has_meta_i32(const ModelLoader& m, const char* key) {
     return m.get_i64(key, INT64_MIN) != INT64_MIN;
 }
@@ -269,6 +279,34 @@ std::vector<float> kugelaudio_align_semantic_features(const std::vector<float>& 
     return out;
 }
 
+std::vector<float> kugelaudio_sample_acoustic_features(const std::vector<float>& mean,
+                                                        float fix_std,
+                                                        const std::string& dist_type,
+                                                        std::mt19937& rng) {
+    std::vector<float> out = mean;
+    if (out.empty()) return out;
+    if (dist_type == "none" || fix_std == 0.0f) return out;
+
+    std::normal_distribution<float> norm(0.0f, 1.0f);
+    if (dist_type == "fix") {
+        for (float& v : out) {
+            v += fix_std * norm(rng);
+        }
+        return out;
+    }
+
+    if (dist_type == "gaussian") {
+        const float scalar_std = fix_std / 0.8f;
+        const float sampled_std = scalar_std * norm(rng);
+        for (float& v : out) {
+            v += sampled_std * norm(rng);
+        }
+        return out;
+    }
+
+    return out;
+}
+
 std::vector<float> kugelaudio_apply_acoustic_scale_bias(const std::vector<float>& acoustic,
                                                         const VibeVoiceConfig& cfg) {
     std::vector<float> out = acoustic;
@@ -372,6 +410,8 @@ bool vibevoice_load(const std::string& path, VibeVoiceModel* out) {
     c.head_layers  = get_meta_i32_any(m, {"kugelaudio.diffusion.head_layers", "vibevoice.diffusion.head_layers"}, 4);
     c.ffn_ratio    = get_meta_f32_any(m, {"kugelaudio.diffusion.ffn_ratio", "vibevoice.diffusion.ffn_ratio"}, 3.0f);
     c.vae_dim      = get_meta_i32_any(m, {"kugelaudio.acoustic.vae_dim", "vibevoice.acoustic.vae_dim"}, 64);
+    c.acoustic_fix_std = get_meta_f32_any(m, {"kugelaudio.acoustic.fix_std", "vibevoice.acoustic.fix_std"}, is_kugelaudio ? 0.5f : 0.0f);
+    c.acoustic_std_dist_type = get_meta_str_any(m, {"kugelaudio.acoustic.std_dist_type", "vibevoice.acoustic.std_dist_type"}, is_kugelaudio ? "gaussian" : "none");
     c.sample_rate  = get_meta_i32_any(m, {"kugelaudio.sample_rate", "vibevoice.sample_rate"}, 24000);
 
     // Acoustic decoder config (we only use the decoder side here)
@@ -1637,6 +1677,7 @@ int tts_15b_generate(VibeVoiceModel*            model,
     per_speaker_Tc.reserve(p.ref_audio_paths.size());
     std::vector<float> speech_features;
     int                total_Tc = 0;
+    std::mt19937       rng(p.seed ? p.seed : std::random_device{}());
 
     for (size_t s = 0; s < p.ref_audio_paths.size(); ++s) {
         const std::string& ref_wav_path = p.ref_audio_paths[s];
@@ -1691,9 +1732,20 @@ int tts_15b_generate(VibeVoiceModel*            model,
             sm_lat_aligned = sm_lat;
         }
 
-        std::vector<float> ac_cond = ac_lat;
+        std::vector<float> acoustic_features = ac_lat;
         if (is_kugelaudio) {
-            ac_cond = kugelaudio_apply_acoustic_scale_bias(ac_lat, cfg);
+            acoustic_features = kugelaudio_sample_acoustic_features(ac_lat,
+                                                                    cfg.acoustic_fix_std,
+                                                                    cfg.acoustic_std_dist_type,
+                                                                    rng);
+            kugelaudio_dump_f32_matrix("01b_acoustic_features_after_sampling", acoustic_features,
+                                       static_cast<size_t>(Tc), static_cast<size_t>(cfg.vae_dim),
+                                       "acoustic conditioning features after canonical tokenizer sampling");
+        }
+
+        std::vector<float> ac_cond = acoustic_features;
+        if (is_kugelaudio) {
+            ac_cond = kugelaudio_apply_acoustic_scale_bias(acoustic_features, cfg);
             kugelaudio_dump_f32_matrix("04_acoustic_after_scale_bias", ac_cond,
                                        static_cast<size_t>(Tc), static_cast<size_t>(cfg.vae_dim),
                                        "acoustic conditioning features after canonical bias/scale step");
@@ -1941,7 +1993,6 @@ int tts_15b_generate(VibeVoiceModel*            model,
     dh_cfg.eps         = cfg.rms_norm_eps;
     dh_cfg.freq_size   = 256;
 
-    std::mt19937 rng(p.seed ? p.seed : std::random_device{}());
     std::normal_distribution<float> norm(0.0f, 1.0f);
 
     std::vector<float> all_latents;

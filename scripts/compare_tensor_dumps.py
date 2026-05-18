@@ -17,7 +17,7 @@ import numpy as np
 ALIASES_CANONICAL_TO_GGML = {
     "00_ref_audio_post_norm": "00_ref_audio_post_norm",
     "01_acoustic_encoder_out_raw": "01_acoustic_encoder_out",
-    "02_acoustic_features_after_sampling": "04_acoustic_after_scale_bias",
+    "02_acoustic_features_after_sampling": "01b_acoustic_features_after_sampling",
     "03_semantic_encoder_mean": "02_semantic_encoder_out",
     "04_semantic_aligned": "03_semantic_aligned",
     "05_acoustic_after_scale_bias": "04_acoustic_after_scale_bias",
