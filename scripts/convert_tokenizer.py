@@ -1,5 +1,10 @@
-#!/usr/bin/env python3
-"""Convert a Qwen2-family `tokenizer.json` to a vibevoice.cpp `tokenizer.gguf`.
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["gguf"]
+# ///
+
+"""Convert a Qwen2-family `tokenizer.json` to a kugelaudio.cpp `tokenizer.gguf`.
 
 The output gguf carries:
   metadata:

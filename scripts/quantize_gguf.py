@@ -1,5 +1,12 @@
-#!/usr/bin/env python3
-"""Quantize a vibevoice gguf in place.
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "gguf"
+# ]
+# ///
+
+"""Quantize a GGUF model in place.
 
 Walks the source gguf and rewrites it with a new dtype for the heavy LM
 matmul tensors (attention projs + FFN). Everything else (conv1d kernels,
@@ -53,7 +60,7 @@ QUANT_MAP = {
 
 # Tensor names that should be quantized when --type is set. Everything else
 # keeps its source dtype. The patterns mirror our gguf naming convention
-# (see scripts/convert_vibevoice_to_gguf.py).
+# (see scripts/convert_kugelaudio_to_gguf.py).
 QUANTIZABLE = [
     re.compile(r"^(lm|tlm)\.blk\.\d+\.attn_[qkvo]\.weight$"),
     re.compile(r"^(lm|tlm)\.blk\.\d+\.ffn_(gate|up|down)\.weight$"),
@@ -87,11 +94,19 @@ def main() -> int:
 
     reader = gguf.GGUFReader(str(args.src))
     arch = "vibevoice"
+    has_kugelaudio = False
     for f in reader.fields.values():
         if f.name == "general.architecture":
             try:    arch = f.contents()
             except Exception: pass
-            break
+        elif f.name == "kugelaudio.architecture":
+            try:
+                has_kugelaudio = (f.contents() == "kugelaudio")
+            except Exception:
+                pass
+
+    if has_kugelaudio:
+        arch = "kugelaudio"
 
     writer = gguf.GGUFWriter(str(args.out), arch=arch)
 
@@ -99,6 +114,8 @@ def main() -> int:
     for f in reader.fields.values():
         if f.name in ("GGUF.version", "GGUF.tensor_count", "GGUF.kv_count"):
             continue  # written by GGUFWriter
+        if has_kugelaudio and f.name == "general.architecture":
+            continue  # keep the rewritten KugelAudio identity
         try:
             value = f.contents()
         except Exception:
