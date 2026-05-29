@@ -90,6 +90,62 @@ int main() {
         return 8;
     }
 
-    std::printf("audio_io ok: roundtrip corr=%.4f, wav max-err=%.6f\n", corr, max_err);
+    // Runtime reference-audio path should accept non-24k, multi-channel WAVs
+    // and convert them internally to 24 kHz mono.
+    const std::string stereo_path = "/tmp/vibevoice_audio_io_stereo_16k.wav";
+    std::vector<float> stereo(static_cast<size_t>(n) * 2);
+    for (int i = 0; i < n; ++i) {
+        stereo[2 * i + 0] = sine[i];
+        stereo[2 * i + 1] = -sine[i];
+    }
+    vv_audio stereo_out{};
+    stereo_out.samples = stereo.data();
+    stereo_out.n_samples = sine.size();
+    stereo_out.sample_rate = sr;
+    stereo_out.channels = 2;
+    if (vv_save_wav(stereo_path.c_str(), &stereo_out) != VV_OK) {
+        std::fprintf(stderr, "save_wav stereo failed\n");
+        return 9;
+    }
+
+    std::vector<float> ref_24k_mono;
+    if (vv::load_wav_24k_mono(stereo_path, &ref_24k_mono) != VV_OK) {
+        std::fprintf(stderr, "load_wav_24k_mono failed\n");
+        return 10;
+    }
+    if (ref_24k_mono.size() < 23990 || ref_24k_mono.size() > 24010) {
+        std::fprintf(stderr, "24k mono length mismatch: %zu\n", ref_24k_mono.size());
+        return 11;
+    }
+    float max_abs = 0.0f;
+    for (float v : ref_24k_mono) max_abs = std::max(max_abs, std::fabs(v));
+    if (max_abs > 1e-3f) {
+        std::fprintf(stderr, "stereo downmix expected near-silence after averaging channels, got max_abs=%f\n", max_abs);
+        return 12;
+    }
+
+    // Canonical reference-audio normalization: target -25 dBFS, then avoid clipping.
+    std::vector<float> quiet(24000, 0.01f);
+    vv::normalize_dbfs(&quiet);
+    double sq_norm = 0.0;
+    for (float v : quiet) sq_norm += static_cast<double>(v) * v;
+    const double rms_norm = std::sqrt(sq_norm / quiet.size());
+    const double target_lin = std::pow(10.0, -25.0 / 20.0);
+    if (std::fabs(rms_norm - target_lin) > 1e-3) {
+        std::fprintf(stderr, "normalize_dbfs target mismatch: rms=%f want=%f\n", rms_norm, target_lin);
+        return 13;
+    }
+
+    std::vector<float> loud(24000, 2.0f);
+    vv::normalize_dbfs(&loud);
+    float loud_max_abs = 0.0f;
+    for (float v : loud) loud_max_abs = std::max(loud_max_abs, std::fabs(v));
+    if (loud_max_abs > 1.0f + 1e-5f) {
+        std::fprintf(stderr, "normalize_dbfs clipping guard failed: max_abs=%f\n", loud_max_abs);
+        return 14;
+    }
+
+    std::printf("audio_io ok: roundtrip corr=%.4f, wav max-err=%.6f, ref_24k_mono=%zu samples, normalized_rms=%.6f\n",
+                corr, max_err, ref_24k_mono.size(), rms_norm);
     return 0;
 }

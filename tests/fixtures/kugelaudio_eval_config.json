@@ -1,0 +1,51 @@
+{
+  "comment": "Evaluation fixture config for KugelAudio v1 acceptance. All paths are relative to this file.",
+  "voice_cloned_sample": {
+    "name": "kugelaudio-0-open-hello-sine",
+    "text": "Hello world.",
+    "reference_audio": "reference_sine.wav",
+    "seed": 12345,
+    "cfg_scale": 1.0,
+    "steps": 8,
+    "max_frames": 32,
+    "description": "Ground-truth canonical output produced by kugelaudio/kugelaudio-0-open with the reference_sine.wav fixture. This is the voice-cloned acceptance sample against which ggml output is compared."
+  },
+  "canonical_repo": "../../../kugelaudio-open",
+  "canonical_model": "kugelaudio/kugelaudio-0-open",
+  "ggml_cli": "../../build/bin/kugelaudio-cli",
+  "ggml_model": "../../artifacts/models/kugelaudio-f16.gguf",
+  "ggml_model_q8_0": "../../artifacts/models/kugelaudio-q8_0.gguf",
+  "ggml_tokenizer": "../../artifacts/models/tokenizer.gguf",
+  "ggml_backend": "cpu",
+  "evaluators": {
+    "transcription": {
+      "backend": "faster-whisper",
+      "model": "small.en",
+      "language": "en",
+      "compute_type": "int8",
+      "beam_size": 5
+    },
+    "speaker_similarity": {
+      "backend": "speechbrain-ecapa",
+      "model": "speechbrain/spkrec-ecapa-voxceleb"
+    }
+  },
+  "metric_thresholds": {
+    "transcript_recall": {
+      "ratio": 0.95,
+      "floor": 0.8
+    },
+    "speaker_similarity": {
+      "ratio": 0.95,
+      "floor": 0.6
+    }
+  },
+  "reference_audio": "reference_sine.wav",
+  "text": "Hello world.",
+  "output_dir": "../../artifacts/eval/kugelaudio-smoke",
+  "seed": 12345,
+  "cfg_scale": 1.0,
+  "steps": 8,
+  "max_frames": 32,
+  "max_new_tokens": 4096
+}
