@@ -1,22 +1,20 @@
 # CUDA / GPU build
 
-`vibevoice.cpp` builds against the embedded `ggml` submodule's CUDA
+`kugelaudio.cpp` builds against the embedded `ggml` submodule's CUDA
 backend — no source changes needed, just a CMake flag.
 
-> **Status:** the CMake flag enables the CUDA build (verified on a DGX
-> Spark / GB10 host). However our current compute path uses
-> `ggml_graph_compute_with_ctx`, which is **CPU-only**. ggml builds the
-> CUDA plugin (`libggml-cuda.so`) but our binary doesn't dispatch graphs
-> to it yet. Real GPU compute requires switching to the
-> `ggml_backend_*` API (tracked in the project task list).
+> **Status:** the runtime now uses ggml's `ggml_backend_*` API rather than the
+> old CPU-only graph shortcut. CUDA/Vulkan support is still correctness-first,
+> but backend selection, fallback logging, and eval-harness integration are now
+> part of the supported path.
 
 ## Build
 
 ```bash
 cmake -B build \
-    -DVIBEVOICE_BUILD_TESTS=ON \
-    -DVIBEVOICE_BUILD_EXAMPLES=ON \
-    -DVIBEVOICE_GGML_CUDA=ON \
+    -DKUGELAUDIO_BUILD_TESTS=ON \
+    -DKUGELAUDIO_BUILD_EXAMPLES=ON \
+    -DKUGELAUDIO_GGML_CUDA=ON \
     -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
@@ -25,38 +23,27 @@ Forwarded ggml backend flags (any combination):
 
 | CMake flag                     | What it enables                               |
 | ------------------------------ | --------------------------------------------- |
-| `-DVIBEVOICE_GGML_CUDA=ON`     | NVIDIA CUDA (`ggml-cuda`)                     |
-| `-DVIBEVOICE_GGML_METAL=ON`    | Apple Metal (`ggml-metal`)                    |
-| `-DVIBEVOICE_GGML_VULKAN=ON`   | cross-vendor Vulkan compute (`ggml-vulkan`)   |
-| `-DVIBEVOICE_GGML_HIPBLAS=ON`  | AMD ROCm (`ggml-hipblas`)                     |
+| `-DKUGELAUDIO_GGML_CUDA=ON`     | NVIDIA CUDA (`ggml-cuda`)                     |
+| `-DKUGELAUDIO_GGML_METAL=ON`    | Apple Metal (`ggml-metal`)                    |
+| `-DKUGELAUDIO_GGML_VULKAN=ON`   | cross-vendor Vulkan compute (`ggml-vulkan`)   |
+| `-DKUGELAUDIO_GGML_HIPBLAS=ON`  | AMD ROCm (`ggml-hipblas`)                     |
 
 ## Smoke test
 
 ```bash
-# Pull the published quantized bundle (Q8_0 ggufs, ~15 GB).
-mkdir -p models
-hf download mudler/vibevoice.cpp-models --local-dir models
-
-# TTS — should run substantially faster on GPU than CPU.
-./build/bin/vibevoice-cli tts \
-    --model     models/vibevoice-realtime-0.5B-q8_0.gguf \
-    --voice     models/voice-en-Carter_man.gguf \
+# TTS — use the raw-reference path rather than the removed voice.gguf flow.
+KUGELAUDIO_BACKEND=cuda ./build/bin/kugelaudio-cli \
+    --model     models/kugelaudio-q8_0.gguf \
     --tokenizer models/tokenizer.gguf \
-    --text "Hello from CUDA." --out hello.wav
+    --ref-audio tests/fixtures/reference_sine.wav \
+    --text "Hello from CUDA." \
+    --out hello.wav
+```
 
-# ASR
-./build/bin/vibevoice-cli asr \
-    --model     models/vibevoice-asr-q8_0.gguf \
-    --tokenizer models/tokenizer.gguf \
-    --audio     hello.wav
+For the CUDA-specific C++ smoke coverage:
 
-# Full closed-loop ctest (~16 GB total; uses ~13 GB VRAM with q8_0 ASR)
-VIBEVOICE_TTS_MODEL=$PWD/models/vibevoice-realtime-0.5B-q8_0.gguf \
-VIBEVOICE_VOICE=$PWD/models/voice-en-Carter_man.gguf \
-VIBEVOICE_ASR_MODEL=$PWD/models/vibevoice-asr-q8_0.gguf \
-VIBEVOICE_TOKENIZER=$PWD/models/tokenizer.gguf \
-VIBEVOICE_CLI=$PWD/build/bin/vibevoice-cli \
-ctest --test-dir build -R "test_closed_loop|test_long_form_asr|test_capi|test_encoder_chunked_parity" --output-on-failure
+```bash
+ctest --test-dir build -R 'test_kugelaudio_cuda_smoke|test_kugelaudio_cuda_conditioning' --output-on-failure
 ```
 
 ## Notes
@@ -66,9 +53,17 @@ ctest --test-dir build -R "test_closed_loop|test_long_form_asr|test_capi|test_en
 - The `vv_capi_load(... n_threads)` argument is a CPU-thread count; on
   GPU the kernel grids do the parallelism. Pass any reasonable value
   (4 is fine).
-- We don't pin the engine to a specific device. Set
-  `CUDA_VISIBLE_DEVICES=0` (or similar) before launching `vibevoice-cli`
-  if you want it on a specific GPU.
-- The closed-loop / long-form / capi tests run unmodified — they just
-  exercise the same `vibevoice-cli` binary and hit faster matmul paths
-  through ggml.
+- You can request a specific backend with `KUGELAUDIO_BACKEND=cuda|vulkan|cpu`.
+- On multi-device systems, use `KUGELAUDIO_BACKEND_DEVICE_INDEX=N` to select a
+  specific matching device.
+- Set `KUGELAUDIO_BACKEND_VERBOSE=1` to include device descriptions/memory in
+  startup logs.
+- `CUDA_VISIBLE_DEVICES=0` (or similar) still works if you want to constrain
+  CUDA visibility before launching `kugelaudio-cli`.
+- The remaining published smoke path is KugelAudio raw-reference TTS; any
+  ASR-specific compatibility checks should be treated as internal/legacy.
+- `test_kugelaudio_cuda_smoke` uses `KUGELAUDIO_Q8_MODEL`,
+  `KUGELAUDIO_TOKENIZER`, and `KUGELAUDIO_REF_WAV`.
+- `test_kugelaudio_cuda_conditioning` uses `KUGELAUDIO_MODEL`,
+  `KUGELAUDIO_TOKENIZER`, and `KUGELAUDIO_REF_WAV`, then stops after the
+  conditioning connector stage to validate the encoder/connector graph on CUDA.

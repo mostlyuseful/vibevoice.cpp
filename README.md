@@ -1,242 +1,373 @@
-# vibevoice.cpp
+# kugelaudio.cpp
 
 **Brought to you by the [LocalAI](https://github.com/mudler/LocalAI) team** - the creators of LocalAI, the open-source AI engine that runs any model - LLMs, vision, voice, image, video - on any hardware. No GPU required.
 
-[![Models on HF](https://img.shields.io/badge/HuggingFace-Models-yellow)](https://huggingface.co/mudler/vibevoice.cpp-models)
+[![Models on HF](https://img.shields.io/badge/HuggingFace-Models-yellow)](https://huggingface.co/mudler/kugelaudio.cpp-models)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![LocalAI](https://img.shields.io/badge/LocalAI-Run_Locally-orange)](https://github.com/mudler/LocalAI)
 
-A C++ inference engine for Microsoft [VibeVoice](https://github.com/microsoft/VibeVoice), built on
-[ggml](https://github.com/ggml-org/ggml). Supports both **TTS** (text-to-speech with voice
-cloning) and **ASR** (long-form transcription with diarization).
+A ggml-based C++ inference engine for **KugelAudio TTS**, forked from
+[`vibevoice.cpp`](https://github.com/mudler/vibevoice.cpp) and renamed for the
+KugelAudio-only direction.
 
-> Status: TTS + ASR pipelines run end-to-end on real model weights, with
-> classifier-free guidance for TTS and a working closed-loop self-test
-> (TTS → ASR produces real English transcripts of the synthesized audio).
+> Published direction: this branch is **KugelAudio-only TTS**.
+> Any remaining VibeVoice compatibility code should be treated as internal or
+> transitional, not as part of the published operator workflow.
 
-## Quickstart - prebuilt models
+> Status: this fork's **v1 acceptance path is KugelAudio-first**:
+> `kugelaudio/kugelaudio-0-open`, single-speaker TTS, exactly one raw
+> reference WAV, CLI-only, canonical-vs-ggml divergence evaluation.
 
-We publish quantized GGUFs at [`mudler/vibevoice.cpp-models`](https://huggingface.co/mudler/vibevoice.cpp-models).
-Pull them and you're running in two commands:
+## Rename / compatibility note
 
+The primary binary is now `kugelaudio-cli`, and new automation should prefer
+`KUGELAUDIO_*` environment variables and `scripts/convert_kugelaudio_to_gguf.py`.
+Deprecated `vibevoice-cli`, `VIBEVOICE_*` env vars, and
+`scripts/convert_vibevoice_to_gguf.py` remain as compatibility aliases while the
+fork finishes shedding old internal names. Remaining `vibevoice.*` GGUF metadata
+references are read/write compatibility details, not the published product name.
+
+## KugelAudio v1 acceptance path
+
+If you are here for the **currently supported** path in this fork, use this
+workflow.
+
+### Supported v1 scope
+- checkpoint: `kugelaudio/kugelaudio-0-open`
+- interface: CLI-only
+- TTS shape: single-speaker only
+- conditioning: exactly one raw reference WAV
+- parity target: canonical-vs-ggml comparison against `../kugelaudio-open`
+- quality target: `f16` transcript recall >= 95% of canonical recall with
+  absolute floor 0.80, plus speaker similarity >= 95% of canonical with
+  absolute floor 0.60
+- execution target: `q8_0` must run end-to-end on the same acceptance path
+
+### Acceptance workflow
 ```bash
-# `--recursive` is mandatory - third_party/ggml is a submodule; without
-# it cmake configure fails with 'add_subdirectory called with empty
-# directory'. If you've already cloned without it:
-#     git submodule update --init --recursive
-git clone --recursive https://github.com/mudler/vibevoice.cpp && cd vibevoice.cpp
+# 1) build
+cmake -B build -DKUGELAUDIO_BUILD_TESTS=ON && cmake --build build -j
 
-cmake -B build -DVIBEVOICE_BUILD_TESTS=ON && cmake --build build -j
+# 2) convert tokenizer + KugelAudio checkpoint
+python scripts/convert_tokenizer.py --src models/qwen2.5/tokenizer.json --out models/tokenizer.gguf
+python scripts/convert_kugelaudio_to_gguf.py \
+  --src models/kugelaudio-0-open \
+  --out models/kugelaudio-f16.gguf
 
-mkdir -p models && hf download mudler/vibevoice.cpp-models --local-dir models
-
-# TTS
-./build/bin/vibevoice-cli tts \
-  --model     models/vibevoice-realtime-0.5B-q8_0.gguf \
-  --tokenizer models/tokenizer.gguf \
-  --voice     models/voice-en-Carter_man.gguf \
-  --text "Hello from vibevoice cpp." --out hello.wav
-
-# ASR
-./build/bin/vibevoice-cli asr \
-  --model     models/vibevoice-asr-q8_0.gguf \
-  --tokenizer models/tokenizer.gguf \
-  --audio     hello.wav
-```
-
-## Quickstart - convert from upstream
-
-If you want to roll your own (different quant, different voice, etc.):
-
-```bash
-# Tokenizer
-hf download Qwen/Qwen2.5-0.5B --local-dir models/qwen2.5
-python scripts/convert_tokenizer.py --src models/qwen2.5 --out models/tokenizer.gguf
-
-# Realtime TTS model (~1.9 GB → ~3.8 GB fp32 gguf)
-hf download microsoft/VibeVoice-Realtime-0.5B --local-dir models/vibevoice-realtime-0.5B
-python scripts/convert_vibevoice_to_gguf.py \
-  --src models/vibevoice-realtime-0.5B \
-  --out models/vibevoice-realtime-0.5B.gguf
-
-# (optional) quantize to Q8_0 - ~50% smaller, no quality loss in the closed-loop test
+# 3) (optional) quantize execution artifact
 python scripts/quantize_gguf.py \
-  --src models/vibevoice-realtime-0.5B.gguf \
-  --out models/vibevoice-realtime-0.5B-q8_0.gguf \
+  --src models/kugelaudio-f16.gguf \
+  --out models/kugelaudio-q8_0.gguf \
   --type q8_0
 
-# Voice prompt (one of the en-*/de-*/fr-* etc. files in the upstream demo)
-curl -sL -o /tmp/voice.pt \
-  https://github.com/microsoft/VibeVoice/raw/main/demo/voices/streaming_model/en-Carter_man.pt
-python scripts/convert_voice_to_gguf.py --src /tmp/voice.pt --out models/voice.gguf
-
-./build/bin/vibevoice-cli tts \
-  --model models/vibevoice-realtime-0.5B-q8_0.gguf \
-  --tokenizer models/tokenizer.gguf \
-  --voice models/voice.gguf \
-  --text "Hello from vibevoice cpp." \
-  --out hello.wav \
-  --cfg 3.0 --steps 20 --max-frames 40 --verbose
+# 4) run the canonical-vs-ggml evaluation harness
+#    external evaluators: faster-whisper + SpeechBrain ECAPA-TDNN
+uv run scripts/eval_kugelaudio_divergence.py \
+  --config tests/fixtures/kugelaudio_eval_config.json \
+  --execute both
 ```
 
-## Closed-loop sanity (TTS → ASR)
+### Vulkan build and smoke run
+
+For Vulkan, use a dedicated build directory and prefer the smaller `q8_0`
+artifact first.
 
 ```bash
-# 1. synthesize
-./build/bin/vibevoice-cli tts \
-    --model models/vibevoice-realtime-0.5B-q8_0.gguf \
-    --voice models/voice-en-Carter_man.gguf \
-    --tokenizer models/tokenizer.gguf \
-    --text "Hello world this is a test of the synthesis system." \
-    --seed 12345 --out say.wav
+# build ggml + kugelaudio.cpp with Vulkan enabled
+cmake -B build-vulkan \
+  -DKUGELAUDIO_GGML_VULKAN=ON \
+  -DKUGELAUDIO_BUILD_TESTS=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-vulkan -j
 
-# 2. transcribe back
-./build/bin/vibevoice-cli asr \
-    --model models/vibevoice-asr-q8_0.gguf \
-    --tokenizer models/tokenizer.gguf \
-    --audio say.wav
-# -> [{"Start":0,"End":2.8,"Speaker":0,"Content":"Hello world, this is a test of the synthesis system."}]
-```
-
-This is the same roundtrip codified as `tests/test_closed_loop.cpp` - see
-[`docs/conversion.md`](docs/conversion.md) for how to wire it into ctest.
-
-## Quickstart - voice cloning (1.5B)
-
-The `microsoft/VibeVoice-1.5B` model conditions on a raw reference WAV
-at synthesis time — no separate voice gguf needed. Hand it ~5 s of any
-speaker and it'll synthesize new text in that voice.
-
-```bash
-hf download microsoft/VibeVoice-1.5B --local-dir models/vibevoice-1.5B
-python scripts/convert_vibevoice_to_gguf.py \
-  --src models/vibevoice-1.5B \
-  --out models/vibevoice-1.5B.gguf
-# shrink the gguf. Two recommended profiles for the 1.5B path:
-#
-#   1) Q8_0 across the board: 11 GB -> 6.8 GB, no measurable recall
-#      hit on the closed-loop benchmark.
-./build/bin/vibevoice-quantize \
-  --src  models/vibevoice-1.5B.gguf \
-  --out  models/vibevoice-1.5B-q8_0.gguf \
+# first execution target on Vulkan: q8_0
+python scripts/quantize_gguf.py \
+  --src models/kugelaudio-f16.gguf \
+  --out models/kugelaudio-q8_0.gguf \
   --type q8_0
-#
-#   2) Mixed: 11 GB -> 6.5 GB, same recall as fp32. FFN at Q6_K, attn
-#      at Q5_K, lm_head at Q8_0. Plain Q5_K across the board collapses
-#      this model (recall drops to 22%) — FFN weights are the most
-#      quant-sensitive piece, attention tolerates Q5_K well.
-./build/bin/vibevoice-quantize \
-  --src           models/vibevoice-1.5B.gguf \
-  --out           models/vibevoice-1.5B-mixed.gguf \
-  --type          q6_k    \
-  --attn-type     q5_k    \
-  --lm-head-type  q8_0
 
-./build/bin/vibevoice-cli tts \
-  --model     models/vibevoice-1.5B-q8_0.gguf \
+# smoke test through the CLI
+KUGELAUDIO_BACKEND=vulkan ./build-vulkan/bin/kugelaudio-cli \
+  --model models/kugelaudio-q8_0.gguf \
   --tokenizer models/tokenizer.gguf \
-  --ref-audio reference-voice.wav \
-  --text      "Hello world, this is a test of voice cloning." \
-  --out       cloned.wav
+  --ref-audio tests/fixtures/reference_sine.wav \
+  --text "Hello world." \
+  --out /tmp/kugelaudio-vulkan-smoke.wav \
+  --seed 12345 --cfg 1.0 --steps 4 --max-frames 24
+
+# optional ctest smoke (requires env vars)
+KUGELAUDIO_Q8_MODEL=$PWD/models/kugelaudio-q8_0.gguf \
+KUGELAUDIO_TOKENIZER=$PWD/models/tokenizer.gguf \
+KUGELAUDIO_REF_WAV=$PWD/tests/fixtures/reference_sine.wav \
+ctest --test-dir build-vulkan -R test_kugelaudio_vulkan_smoke --output-on-failure
+
+# explicit hybrid fallback for longer Vulkan runs:
+# keep generation on Vulkan, decode the final waveform on CPU
+KUGELAUDIO_BACKEND=vulkan ./build-vulkan/bin/kugelaudio-cli \
+  --model models/kugelaudio-q8_0.gguf \
+  --tokenizer models/tokenizer.gguf \
+  --ref-audio tests/fixtures/reference_sine.wav \
+  --text "Hello world." \
+  --out /tmp/kugelaudio-vulkan-hybrid.wav \
+  --seed 12345 --max-frames 64 \
+  --final-decoder-backend cpu
+
+# explicit streamed Vulkan decoder:
+# keep the final decode on Vulkan, but chunk it instead of one-shot decode
+KUGELAUDIO_BACKEND=vulkan KUGELAUDIO_STREAM_DECODER_FRAMES=8 \
+./build-vulkan/bin/kugelaudio-cli \
+  --model models/kugelaudio-q8_0.gguf \
+  --tokenizer models/tokenizer.gguf \
+  --ref-audio tests/fixtures/reference_sine.wav \
+  --text "Hello world." \
+  --out /tmp/kugelaudio-vulkan-stream.wav \
+  --seed 12345 --max-frames 64 \
+  --final-decoder-backend stream
 ```
 
-The same `tts` subcommand handles both model families: pass `--voice
-<voice.gguf>` for the realtime-0.5B path, or `--ref-audio <wav>` for
-runtime voice cloning on the 1.5B path. The CLI dispatches based on
-the loaded gguf's variant metadata; the two flags are mutually
-exclusive.
+Notes:
+- `KUGELAUDIO_BACKEND=vulkan` is the supported runtime selector.
+- `--threads` is currently a CPU-only knob; on Vulkan it is ignored.
+- The current Vulkan path is correctness-first; use `q8_0` before trying the
+  larger `f16` artifact.
+- `--final-decoder-backend auto` uses one-shot final decode on CPU and streamed
+  final decode on GPU backends. Streaming avoids large one-shot CUDA/Vulkan
+  decoder allocations while keeping final decode on the active GPU.
+- `--final-decoder-backend cpu` is an explicit hybrid fallback for longer
+  GPU runs on memory-constrained systems: conditioning / LM / diffusion stay on
+  the selected GPU backend, and only the final latent->waveform acoustic decoder
+  runs on CPU.
+- `--final-decoder-backend stream` explicitly keeps the final decoder on the
+  active backend and chunks the latent->waveform decode to reduce peak memory.
+  Tune chunk size with `KUGELAUDIO_STREAM_DECODER_FRAMES` (default
+  `8`).
+- `--final-decoder-backend active` forces one-shot decode on the active backend;
+  this is mainly a CUDA/Vulkan diagnostic mode because longer outputs can need
+  very large temporary im2col buffers.
+- Vulkan still uses smaller internal encoder chunks than CPU/CUDA; that behavior is
+  handled internally by the runtime.
 
-**Multi-speaker dialog** (1.5B only): repeat `--ref-audio` per speaker
-and tag the lines with `Speaker N:` markers. The model uses each
-WAV's encoded features as the voice for the corresponding speaker.
+### Coherent long-prompt single-sequence mode
+
+For the best current speaker-identity consistency on long prompts, use the
+f16 single-sequence path with generated step embeddings rounded to f16 and a
+streamed final decoder. This keeps one LM/KV-cache sequence instead of restarting
+independent chunks, so it avoids chunk-boundary speaker resets. It is a
+quality/diagnostic path rather than full-coverage longform: generation stops at
+the model's natural speech-end token and may not read the entire input text.
 
 ```bash
-./build/bin/vibevoice-cli tts \
-  --model     models/vibevoice-1.5B-q8_0.gguf \
+KUGELAUDIO_BACKEND=cpu \
+./build/bin/kugelaudio-cli \
+  --model models/kugelaudio-f16.gguf \
   --tokenizer models/tokenizer.gguf \
-  --ref-audio voice-carter.wav \
-  --ref-audio voice-emma.wav \
-  --text "$(printf ' Speaker 0: Hello, I am Carter.\n Speaker 1: And I am Emma.\n Speaker 0: Nice to meet you.')" \
-  --out dialog.wav
+  --ref-audio tests/fixtures/reference_sine.wav \
+  --text-file long_article.txt \
+  --out /tmp/kugelaudio-single-sequence-natural.wav \
+  --max-words-per-chunk 80 \
+  --max-frames 64 \
+  --chunk-continuity single-sequence \
+  --overlap-sentences 1 \
+  --chunking-strategy heuristic \
+  --pause-mode punctuation \
+  --crossfade-ms 60 \
+  --steps 20 \
+  --cfg 1.0 \
+  --seed 12345 \
+  --final-decoder-backend stream \
+  --verbose
 ```
 
-Note: voice cloning **only** works with the 1.5B variant. The
-realtime-0.5B weights ship without encoders, so they can't process a
-reference WAV at runtime — they only consume pre-baked voice gguf
-files (see `scripts/convert_voice_to_gguf.py`).
+Important knobs:
+- `KUGELAUDIO_BACKEND=cpu` avoids f16 long-prompt prefill OOM on 24 GB GPUs.
+- f16 KugelAudio models now round generated step embeddings to f16 before LM
+  feedback by default. Set `KUGELAUDIO_CAST_STEP_EMBED_F16=0` only
+  for parity diagnostics against the older unstable path.
+- `single-sequence` now stops naturally by default. Set
+  `KUGELAUDIO_SINGLE_SEQUENCE_MIN_RATIO=0.90` only to reproduce the
+  old forced-continuation diagnostic; it can produce silence after the natural
+  stop.
+- `--final-decoder-backend stream` avoids the large one-shot CPU final-decoder
+  allocation for long latent sequences.
 
-## Quickstart - ASR
+Use chunking below when full text coverage matters more than maximum speaker
+identity consistency.
+
+### Large natural blocks for fuller long-form coverage
+
+The best current full-text compromise is to keep `--chunk-continuity none`, but
+use fewer, larger chunks so speaker identity is re-sampled less often. This does
+not carry generated audio, latents, or KV state across chunk boundaries; each
+block still stops naturally within its frame budget and is stitched afterward.
 
 ```bash
-# ASR model (~14 GB safetensors → ~33 GB fp32 gguf - needs lots of disk)
-hf download microsoft/VibeVoice-ASR --local-dir models/vibevoice-asr
-python scripts/convert_vibevoice_to_gguf.py \
-  --src models/vibevoice-asr \
-  --out models/vibevoice-asr.gguf
-
-./build/bin/vibevoice-cli asr \
-  --model models/vibevoice-asr.gguf \
+KUGELAUDIO_BACKEND=cuda \
+./build-cuda/bin/kugelaudio-cli \
+  --model models/kugelaudio-f16.gguf \
   --tokenizer models/tokenizer.gguf \
-  --audio my-clip.wav
-# -> [{"Start":0.0,"End":6.0,"Speaker":0,"Content":"..."}]
+  --ref-audio tests/fixtures/reference_sine.wav \
+  --text-file long_article.txt \
+  --out /tmp/kugelaudio-large-natural-blocks.wav \
+  --max-words-per-chunk 224 \
+  --max-frames 192 \
+  --chunk-continuity none \
+  --overlap-sentences 1 \
+  --chunking-strategy heuristic \
+  --pause-mode punctuation \
+  --crossfade-ms 60 \
+  --steps 20 \
+  --cfg 1.0 \
+  --seed 12345 \
+  --final-decoder-backend auto \
+  --verbose
 ```
 
-## Benchmarks
+Use this when you need more coverage than natural single-sequence provides. In
+current listening/debug runs, `224` words / `192` frames produced three blocks
+on the long-form fixture; larger two-block settings can stop too early or
+compress coverage, so treat them as per-text tuning rather than defaults.
 
-Long-form ASR on the multi-speaker
-[Microsoft VibeVoice samples](https://microsoft.github.io/VibeVoice/),
-through `vibevoice-cli asr` with the Q4_K-quantized 7B model. RTF is
-inference time / audio duration; lower is faster.
+### Optional long-text chunking
 
-| Sample        | Audio duration | Backend / hardware         | Model | Load time | Inference | RTF       |
-|---------------|---------------:|----------------------------|-------|----------:|----------:|----------:|
-| `2p_argument` | 68.5 s         | CPU - AMD Ryzen 9950X3D    | Q4_K  | 5.9 s     | 150.4 s   | **2.195** |
-| `2p_argument` | 68.5 s         | CUDA - NVIDIA GB10         | Q4_K  | 2.2 s     | 28.0 s    | **0.408** |
+Long-text chunking is available as an optional CLI path outside the strict v1
+acceptance workflow. The runtime follows the canonical heuristic planner shape:
 
-Sample transcripts and timing are produced by `vibevoice-cli asr ... 2>&1 | grep "asr: timing"`
-(timing breakdown was added in the same release as the backend dispatch).
-Reproduce locally:
+- sentence boundaries first
+- clause fallback for oversized sentences
+- hard-wrap by words as a last resort
+- raw-reference conditioning cached/reused for normal chunked generation
+- clean independent chunks by default (`--chunk-continuity none`)
+- stitched output with configurable pause insertion and crossfade
 
 ```bash
-hf download mudler/vibevoice.cpp-models --local-dir models
-ffmpeg -i sample.mp3 -ac 1 -ar 24000 sample.wav
-VIBEVOICE_BACKEND=cuda ./build/bin/vibevoice-cli asr \
-    --model models/vibevoice-asr-q4_k.gguf \
-    --tokenizer models/tokenizer.gguf \
-    --audio sample.wav --max-new-tokens 8192
+./build/bin/kugelaudio-cli \
+  --model models/kugelaudio-f16.gguf \
+  --tokenizer models/tokenizer.gguf \
+  --ref-audio tests/fixtures/reference_sine.wav \
+  --text-file long_article.txt \
+  --max-words-per-chunk 120 \
+  --overlap-sentences 1 \
+  --chunking-strategy syntax-aware \
+  --pause-mode punctuation \
+  --crossfade-ms 60 \
+  --chunk-continuity none \
+  --out /tmp/kugelaudio-long.wav
 ```
+
+Notes:
+- `--max-words-per-chunk <= 0` disables chunking.
+- Short inputs bypass stitching automatically.
+- `--overlap-sentences N` reuses the last `N` completed sentences from the
+  previous chunk as prompt context for the next chunk.
+- `--chunking-strategy heuristic|syntax-aware` selects between the canonical
+  baseline planner and a lightweight syntax-aware variant that additionally
+  prefers conjunction-aware phrase breaks for oversized sentences.
+- `--chunk-continuity none` is the recommended quality mode: every chunk uses
+  the same cached raw-reference conditioning and no generated audio/state is fed
+  forward.
+- `--chunk-continuity single-sequence` is an experimental true model-state
+  continuity baseline: it ignores chunk stitching and generates the full text in
+  one LM/KV-cache sequence with a total frame budget of
+  `max_frames * planned_chunks`. This avoids independent chunk restarts and, by
+  default, stops at the natural speech-end token rather than forcing full-budget
+  coverage.
+- Retired experiment: `clean-tail-reference` appended a short sanitized voiced
+  island from generated audio to the original reference. It still caused noise
+  and speaker drift, so generated waveform feedback remains unsafe.
+- Retired experiment: `prompt-instruction` added text-only continuity guidance.
+  It avoided noise but still changed speaker identity between chunks, so it is
+  not recommended for quality-critical output.
+- Retired experiment: `tail-reference` continuity conditioned chunk N+1 on the
+  original raw reference plus a decoded voiced tail from chunk N. It reduced
+  speaker-identity jumps, but listening showed decoded waveform noise was fed
+  back and amplified from chunk 2 onward. Do not reintroduce waveform-tail
+  reference conditioning without explicit denoising/gating evidence.
+- Retired experiment: `latent-prefix` fed prior generated latent frames into the
+  next chunk's LM state. Listening showed worse noise and intonation drift, so
+  it is not exposed by the CLI.
+- No heavy NLP dependency is added in this repo; sentence splitting still uses
+  the existing punctuation heuristic, while `syntax-aware` mainly affects the
+  oversized-sentence fallback path.
+
+Primary docs for this path:
+- `docs/conversion.md` — converter + GGUF contract
+- `docs/kugelaudio-parity.md` — parity notes, acceptance fixture, eval/logging contract
+- `AGENTS.md` — maintainer workflow / acceptance path orientation
+
+### Canonical reference points into `../kugelaudio-open`
+When behavior is ambiguous, these are the first files to check in the canonical
+PyTorch implementation:
+- prompt formatting + section semantics:
+  `../kugelaudio-open/src/kugelaudio_open/processors/kugelaudio_processor.py`
+- inference loop behavior (CFG, speech tokens, stop behavior):
+  `../kugelaudio-open/src/kugelaudio_open/models/kugelaudio_inference.py`
+- generation helpers used by the canonical path:
+  `../kugelaudio-open/src/kugelaudio_open/utils/generation.py`
+- reference-audio preprocessing / normalization:
+  `../kugelaudio-open/src/kugelaudio_open/processors/audio_processor.py`
+- published config/model shape assumptions:
+  `../kugelaudio-open/src/kugelaudio_open/configs/kugelaudio_1.5b.json`
+  and `../kugelaudio-open/src/kugelaudio_open/configs/model_config.py`
+- CLI/reference workflow in the canonical repo:
+  `../kugelaudio-open/src/kugelaudio_open/cli.py`
+
+## Removed legacy operator workflows
+
+The published CLI/docs surface for this branch is now **KugelAudio TTS only**.
+The following older operator workflows have been removed from this README:
+
+- pre-baked `voice.gguf` conditioning
+- legacy raw-reference VibeVoice quickstarts
+- ASR quickstarts and ASR benchmark guidance
+
+Some compatibility code may still exist internally, but those paths are not the
+supported publish surface for this branch. Fresh users should follow only the
+KugelAudio acceptance workflow above.
 
 ## Tests
 
 ```bash
-ctest --test-dir build --output-on-failure   # 21 ctest targets
+ctest --test-dir build --output-on-failure
 ```
 
-For the real-weight tests:
+For supported real-weight KugelAudio tests:
 
 ```bash
-VIBEVOICE_MODEL=models/vibevoice-realtime-0.5B.gguf \
-VIBEVOICE_TOKENIZER=models/tokenizer.gguf \
-  ctest --test-dir build --output-on-failure -j 2
+KUGELAUDIO_MODEL=models/kugelaudio-f16.gguf \
+KUGELAUDIO_TOKENIZER=models/tokenizer.gguf \
+KUGELAUDIO_REF_WAV=tests/fixtures/reference_sine.wav \
+KUGELAUDIO_CLI=$PWD/build/bin/kugelaudio-cli \
+ctest --test-dir build --output-on-failure -j 2
+```
+
+For the chunked CLI real-weight coverage specifically:
+
+```bash
+KUGELAUDIO_MODEL=models/kugelaudio-f16.gguf \
+KUGELAUDIO_TOKENIZER=models/tokenizer.gguf \
+KUGELAUDIO_REF_WAV=tests/fixtures/reference_sine.wav \
+KUGELAUDIO_CLI=$PWD/build/bin/kugelaudio-cli \
+ctest --test-dir build -R 'test_kugelaudio_cli_chunking_e2e|test_kugelaudio_cli_chunking_seed' --output-on-failure
 ```
 
 ## Embedding from Go (purego)
 
-`vibevoice.cpp` ships a flat C ABI in [`include/vibevoice_capi.h`](include/vibevoice_capi.h)
-designed for `dlopen` / `purego.RegisterLibFunc` consumers. It mirrors
-the layout LocalAI's `qwen3-tts-cpp` Go backend uses:
+`kugelaudio.cpp` ships a flat C ABI in [`include/vibevoice_capi.h`](include/vibevoice_capi.h)
+designed for `dlopen` / `purego.RegisterLibFunc` consumers.
+
+> Note: for this branch's published surface, treat the C ABI as
+> **compatibility / embedding infrastructure**, not the primary acceptance
+> surface. The supported published workflow remains the KugelAudio TTS CLI.
+
+The TTS entrypoints are:
 
 ```c
 int  vv_capi_load(const char* tts_model, const char* asr_model,
                   const char* tokenizer, const char* voice, int n_threads);
-// `voice_path` is for realtime-0.5B, `ref_audio_path` is for 1.5B
-// (runtime voice cloning); pass NULL for whichever the loaded model
-// doesn't need.
-int  vv_capi_tts(const char* text, const char* voice_path, const char* ref_audio_path,
-                 const char* dst_wav, int steps, float cfg, int max_speech_frames,
-                 uint32_t seed);
-int  vv_capi_asr(const char* src_wav, char* out_json, size_t out_capacity,
-                 int max_new_tokens);
+int  vv_capi_tts(const char* text, const char* voice_path,
+                 const char* const* ref_audio_paths, int n_ref_audio_paths,
+                 const char* dst_wav, int steps, float cfg,
+                 int max_speech_frames, uint32_t seed);
 void vv_capi_unload(void);
 ```
 
@@ -246,36 +377,37 @@ Build the shared library and call it from Go:
 import "github.com/ebitengine/purego"
 
 var (
-    Load     func(tts, asr, tok, voice string, threads int) int
-    TTS      func(text, voice, refAudio, dst string, steps int, cfg float32, maxFrames int, seed uint32) int
-    ASR      func(src string, out []byte, outCap uint64, maxTok int) int
-    Unload   func()
+    Load   func(tts, asr, tok, voice string, threads int) int
+    // Model the TTS function with the exact pointer shape from
+    // include/vibevoice_capi.h in your binding layer.
+    TTS    any
+    Unload func()
 )
 
-lib, _ := purego.Dlopen("./libvibevoice.so", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+lib, _ := purego.Dlopen("./libkugelaudio.so", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 purego.RegisterLibFunc(&Load,   lib, "vv_capi_load")
 purego.RegisterLibFunc(&TTS,    lib, "vv_capi_tts")
-purego.RegisterLibFunc(&ASR,    lib, "vv_capi_asr")
 purego.RegisterLibFunc(&Unload, lib, "vv_capi_unload")
 ```
 
-Build the shared library with `cmake -DVIBEVOICE_SHARED=ON`.
+Build the shared library with `cmake -DKUGELAUDIO_SHARED=ON`.
 
 ## Why
 
-VibeVoice's official runtime is Python + Transformers + a vLLM plugin. `vibevoice.cpp` provides:
+KugelAudio's canonical open runtime is Python/PyTorch. `kugelaudio.cpp` provides:
 
 - A native CPU runtime with no Python at inference time
 - Free CUDA / Metal / Vulkan support via ggml backends
 - A single `.gguf` weight file + a single binary
 - A flat C ABI (`include/vibevoice_capi.h`) for embedding via dlopen / purego / cgo
+- A KugelAudio-first published workflow centered on raw-reference TTS
 
 ## Build
 
 ```bash
-git clone --recursive https://example.com/vibevoice.cpp
-cd vibevoice.cpp
-cmake -B build -DVIBEVOICE_BUILD_TESTS=ON
+git clone --recursive https://example.com/kugelaudio.cpp
+cd kugelaudio.cpp
+cmake -B build -DKUGELAUDIO_BUILD_TESTS=ON
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
@@ -293,4 +425,4 @@ maintainer of [LocalAI](https://github.com/mudler/LocalAI). PRs welcome.
 
 MIT - see [LICENSE](LICENSE). Copyright © 2026 Ettore Di Giacinto.
 The model weights remain under their upstream license
-([microsoft/VibeVoice](https://huggingface.co/microsoft/VibeVoice-1.5B)).
+([kugelaudio/kugelaudio-0-open](https://huggingface.co/kugelaudio/kugelaudio-0-open)).

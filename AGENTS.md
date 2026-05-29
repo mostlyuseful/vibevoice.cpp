@@ -1,199 +1,277 @@
-# Maintainer's guide — vibevoice.cpp
+# Maintainer's guide — kugelaudio.cpp / KugelAudio port
 
 A pragmatic guide for whoever is poking at this repo next. Concise on
 purpose; the README covers what users see.
 
 ## What this project is
 
-A C++/ggml port of Microsoft VibeVoice. One binary (`vibevoice-cli`)
-does both **TTS** (text → 24 kHz WAV with voice cloning) and **ASR**
-(WAV → JSON transcript). Built on stock ggml (no fork). Public C API in
-[`include/vibevoice.h`](include/vibevoice.h) so other projects can
-embed it via dlopen / purego / cgo.
+This repo started as a C++/ggml port of Microsoft VibeVoice. Its current
+purpose for forking is narrower:
 
-Reference impls we trust, in order:
-1. **`microsoft/VibeVoice`** (`vibevoice/modular/`) — the one that was
-   actually trained. Single source of truth on weights + math.
-2. **`Blaizzy/mlx-audio`** (`mlx_audio/{stt,tts}/models/vibevoice…/`) —
-   closest analog to what we're writing. Useful when upstream PyTorch
-   does something tricky and we want a non-PyTorch confirmation.
-3. **`transformers/models/vibevoice_*/`** — a refactored re-port. Differs
-   from upstream in subtle places (sampling formula, processor API).
-   Cross-check before trusting.
+- use the inherited `vibevoice.cpp` code as the **ggml migration base** while publishing this fork as `kugelaudio.cpp`
+- make **KugelAudio** the primary TTS target
+- treat the canonical PyTorch implementation at **`../kugelaudio-open`** as
+  the behavioral ground truth for TTS
 
-When you suspect a numerical bug in our code, dump the matching tensor
-from the chosen reference and diff. There's a template at
-`/tmp/asr_ref_compare.py` (not committed; lives only on the dev box) that
-shows how to load just the encoder + connector shards from the 7B ASR
-checkpoint and run them standalone.
+Current v1 target:
+- checkpoint: **`kugelaudio/kugelaudio-0-open`**
+- mode: **single-speaker TTS only**
+- conditioning: **raw reference audio only**
+- interface: **CLI only** for acceptance purposes
+
+Out of v1 scope:
+- named / pre-encoded voices
+- pre-encoded `voice_cache`
+- language hints
+- multi-speaker dialog
+- long-text chunking
+- watermarking
+
+## Reference impls we trust
+
+For KugelAudio TTS work, trust these in order:
+
+1. **`../kugelaudio-open`** — single source of truth for prompt format,
+   preprocessing, token behavior, CFG behavior, speech-end handling, and
+   expected checkpoint/config shape.
+2. **This repo's existing VibeVoice codepaths** — useful as implementation
+   scaffolding only. Reuse aggressively, but do not let them override the
+   KugelAudio reference behavior.
+3. **Upstream Microsoft VibeVoice / mlx / transformers ports** — only for
+   understanding inherited architecture pieces or debugging low-level math.
+
+Rule of thumb:
+- **behavioral disputes** -> `../kugelaudio-open` wins
+- **implementation reuse choices** -> prefer the smallest safe diff from the
+  current C++ code
+
+## Current reality of this repo
+
+What is real and relevant:
+- `src/vibevoice_tts.cpp` contains the TTS orchestration logic we are adapting.
+- `src/vibevoice_asr.cpp` and related surfaces are now **legacy/internal
+  compatibility code**, not part of the published KugelAudio operator surface.
+- `src/speech_conditioning_helpers.hpp` contains shared speech-conditioning
+  pieces reused by the raw-reference TTS path and legacy/internal
+  compatibility code.
+- `scripts/eval_kugelaudio_divergence.py` is the current acceptance/eval
+  orchestrator for canonical-vs-ggml comparison.
+- `tests/fixtures/kugelaudio_eval_config.json` is the acceptance fixture/config
+  entrypoint.
+- `docs/kugelaudio-parity.md` is the maintainer-facing parity/eval note that
+  reflects current Slice 3–5 reality.
+- `include/vibevoice_capi.h` is the more real embedding surface than
+  `include/vibevoice.h`, but **neither is a v1 acceptance target**.
+- `src/vibevoice.cpp` / `include/vibevoice.h` are not the main product surface
+  for this KugelAudio milestone.
+
+What to optimize for:
+- converter correctness
+- loader/schema clarity
+- prompt/inference parity with `../kugelaudio-open`
+- deterministic eval runs
+- canonical-vs-ggml regression against canonical PyTorch
+
+## Start here for the KugelAudio v1 acceptance path
+
+If you are picking up this repo fresh, do **not** start from the old VibeVoice
+quickstarts or the legacy voice-cache flow.
+
+Read/use these first:
+- `prd.md` — current execution plan and acceptance checklist
+- `project-memory.md` — implementation decisions already taken during the
+  KugelAudio migration
+- `docs/conversion.md` — converter + GGUF contract, including KugelAudio-only
+  schema expectations
+- `docs/kugelaudio-parity.md` — parity notes, eval fixture shape,
+  external-evaluator assumptions, logging contract, and acceptance-path caveats
+- `scripts/eval_kugelaudio_divergence.py` — canonical-vs-ggml eval harness
+- `tests/fixtures/kugelaudio_eval_config.json` — acceptance fixture/config
+
+The current v1 acceptance workflow is:
+1. convert `kugelaudio/kugelaudio-0-open`
+2. optionally quantize to `q8_0`
+3. run the canonical-vs-ggml divergence harness
+4. inspect `results.json` + per-step logs
+5. enforce transcript-recall and speaker-similarity thresholds on the supported fixture
+
+If a doc/example conflicts with the above flow, treat it as legacy unless it
+explicitly says it is part of the KugelAudio v1 acceptance path.
 
 ## Layout
 
 ```
-include/vibevoice.h          # public C API (purego / dlopen target)
+include/
+  vibevoice.h              # older public C API; not a v1 acceptance target
+  vibevoice_capi.h         # flatter C ABI; more real than vibevoice.h
 src/
-  vibevoice.cpp              # public-API impl
-  vibevoice_tts.{hpp,cpp}    # TTS orchestrator (M5)
-  vibevoice_asr.{hpp,cpp}    # ASR orchestrator (M6)
-  qwen2.{hpp,cpp}            # Qwen2 transformer block + GQA + KV cache
-  acoustic_tokenizer.{hpp,cpp}# VAE encoder + decoder
-  diffusion_head.{hpp,cpp}   # DiffusionHead + DPM-Solver
-  conv1d.{hpp,cpp}           # SConv1d / SConvTranspose1d
-  rms_norm.hpp               # ConvRMSNorm
-  model_loader.{hpp,cpp}     # gguf reader (mmap → name → ggml_tensor)
-  tokenizer.{hpp,cpp}        # vendored Qwen2 byte-level BPE
-  audio_io.{hpp,cpp}         # dr_wav wrap + linear resampler
+  kugelaudio.cpp            # older public-API impl / shim
+  vibevoice_capi.cpp       # flat C ABI impl
+  vibevoice_tts.{hpp,cpp}  # main KugelAudio TTS adaptation target
+  vibevoice_asr.{hpp,cpp}  # legacy/internal ASR compatibility + shared logic
+  speech_conditioning_helpers.hpp
+  qwen2.{hpp,cpp}
+  acoustic_tokenizer.{hpp,cpp}
+  diffusion_head.{hpp,cpp}
+  dpm_solver.{hpp,cpp}
+  conv1d.{hpp,cpp}
+  model_loader.{hpp,cpp}
+  tokenizer.{hpp,cpp}
+  audio_io.{hpp,cpp}
 scripts/
   convert_tokenizer.py
-  convert_vibevoice_to_gguf.py
-  convert_voice_to_gguf.py
+  convert_kugelaudio_to_gguf.py
   quantize_gguf.py
+  eval_kugelaudio_divergence.py # acceptance/eval harness
 tests/
-  test_*.cpp                 # ~14 ctests; SKIP_RETURN_CODE=77 = skip
-  fixtures/tokenizer.gguf    # tiny tokenizer fixture (committed)
+  fixtures/kugelaudio_eval_config.json
+  test_kugelaudio_*.{cpp,py}    # acceptance-path tests are concentrated here
 docs/
-  conversion.md              # tensor naming + quant notes
-.github/workflows/ci.yml     # build+test (Linux+macOS) + closed-loop on dispatch
-third_party/ggml             # pinned submodule
+  conversion.md
+  kugelaudio-parity.md
+third_party/ggml
+../kugelaudio-open/
+  src/kugelaudio_open/...       # canonical TTS behavior
 ```
 
 ## Build
 
 ```bash
-git clone --recursive <repo> && cd vibevoice.cpp
-cmake -B build -DVIBEVOICE_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+git clone --recursive <repo> && cd kugelaudio.cpp
+cmake -B build -DKUGELAUDIO_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-CMake options:
-- `VIBEVOICE_BUILD_TESTS` — register ctests
-- `VIBEVOICE_TEST_LARGE` — enable model-dependent tests (closed-loop, long-form). They still skip 77 if env vars aren't set, so this is safe to leave on.
-- `VIBEVOICE_BUILD_EXAMPLES` (default ON) — `vibevoice-cli`
-- `VIBEVOICE_GGML_CUDA` / `VIBEVOICE_GGML_METAL` — pass through to the ggml submodule.
+Useful CMake options:
+- `KUGELAUDIO_BUILD_TESTS`
+- `KUGELAUDIO_TEST_LARGE`
+- `KUGELAUDIO_BUILD_EXAMPLES`
+- `KUGELAUDIO_GGML_CUDA`
+- `KUGELAUDIO_GGML_METAL`
+- `KUGELAUDIO_GGML_VULKAN`
+
+## Acceptance focus
+
+For the KugelAudio milestone, "works" is not enough.
+
+The v1 acceptance shape is:
+- convert `kugelaudio/kugelaudio-0-open`
+- load it in the C++ runtime
+- generate a reproducible single-speaker sample
+- generate a reproducible raw-reference voice-cloned sample
+- compare against `../kugelaudio-open` with the **same**:
+  - checkpoint
+  - prompt
+  - reference audio
+  - seed
+  - generation settings
+- require `f16` transcript recall to reach at least:
+  - **95% of canonical PyTorch transcript recall**, and
+  - **0.80 absolute recall floor**
+- require `f16` speaker similarity to reach at least:
+  - **95% of canonical PyTorch speaker similarity**, and
+  - **0.60 absolute floor**
+- require `q8_0` to run end-to-end
 
 ## Tests at a glance
 
-| File                            | What it does                                            | Needs models? |
-| ------------------------------- | ------------------------------------------------------- | :-----------: |
-| `test_smoke`                    | Lib loads, version string is non-empty                  | no            |
-| `test_audio_io`                 | dr_wav round-trip                                       | no            |
-| `test_tokenizer`                | Qwen2 BPE id-level parity vs HF on a fixture            | no            |
-| `test_rope`                     | RoPE cos/sin tables vs PyTorch                          | no            |
-| `test_qwen2_block`              | Qwen2 forward pass numerics                             | no            |
-| `test_sconv1d`                  | Causal conv1d / convtranspose1d numerics                | no            |
-| `test_block1d`                  | ConvNeXt Block1D forward                                | no            |
-| `test_acoustic`                 | Encoder + decoder forward on tiny random weights        | no            |
-| `test_diffusion_head`           | TimestepEmbedder + DiffusionHead forward                | no            |
-| `test_dpm_solver`               | DPM-Solver++ multistep schedule                         | no            |
-| `test_load_realtime`            | Real 0.5B gguf opens cleanly                            | yes (env)     |
-| `test_e2e_tts`                  | Real TTS produces non-silent / non-clipped audio        | yes (env)     |
-| `test_e2e_asr`                  | Real ASR encoder runs + tone smoke                      | yes (env)     |
-| `test_closed_loop`              | TTS → ASR roundtrip; ≥80 % source-word recall           | **yes**       |
-| `test_long_form_asr`            | 65 s audio (TTS×N) round-trips with multi-segment match | **yes**       |
+Legacy compatibility tests are still useful, but for KugelAudio work prioritize
+those that validate:
+- converter schema detection
+- prompt formatting parity
+- single-speaker raw-reference generation
+- external-evaluator regression against canonical PyTorch
+- deterministic seeded behavior on CPU
 
-Env vars for the model-dependent tests (set whichever ones you need):
+When adding new tests, prefer making the acceptance path obvious rather than
+expanding generic coverage.
+
+## Env vars / model-dependent testing
+
+Published acceptance-path tests primarily use env vars such as:
 
 ```
-VIBEVOICE_MODEL        # alias used by older tests; .gguf path
-VIBEVOICE_TTS_MODEL    # closed-loop / long-form TTS path
-VIBEVOICE_ASR_MODEL    # closed-loop / long-form ASR path
-VIBEVOICE_VOICE        # voice-en-Carter_man.gguf or similar
-VIBEVOICE_TOKENIZER    # tokenizer.gguf
-VIBEVOICE_CLI          # absolute path to build/bin/vibevoice-cli
+KUGELAUDIO_MODEL
+KUGELAUDIO_Q8_MODEL
+KUGELAUDIO_TOKENIZER
+KUGELAUDIO_CLI
+KUGELAUDIO_REF_WAV
 ```
 
-A ready-to-use bundle is published at
-[`mudler/vibevoice.cpp-models`](https://huggingface.co/mudler/vibevoice.cpp-models)
-(Q8_0 ggufs + voices + tokenizer, ~15 GB). The CI workflow's `closed-loop`
-job pulls from there on `workflow_dispatch`.
+Legacy/internal tests may still reference older VibeVoice-era env vars, but
+fresh KugelAudio-focused coverage should prefer clearly named KugelAudio vars
+instead of widening the old compatibility set.
 
 ## Naming + conventions
 
-### gguf tensor names (mirror upstream PyTorch hierarchy)
+### GGUF schema
 
-| HF / safetensors prefix              | gguf prefix         |
-| ------------------------------------ | ------------------- |
-| `model.language_model.…`             | `lm.…`              |
-| `model.tts_language_model.…`         | `tlm.…`             |
-| `model.acoustic_tokenizer.encoder.…` | `at.enc.…`          |
-| `model.acoustic_tokenizer.decoder.…` | `at.dec.…`          |
-| `model.semantic_tokenizer.encoder.…` | `st.…`              |
-| `model.acoustic_connector.…`         | `ac.…`              |
-| `model.semantic_connector.…`         | `sc.…`              |
-| `model.prediction_head.…`            | `dh.…`              |
-| `model.tts_eos_classifier.…`         | `eos.…`             |
-| `lm_head.weight`                     | `lm_head.weight`    |
+Do **not** assume the long-term KugelAudio GGUF schema must match legacy
+`vibevoice.*` metadata names.
 
-Layer-internal naming follows `<prefix>.blk.<i>.attn_{q,k,v,o}.{weight,bias}`,
-`<prefix>.blk.<i>.{attn,ffn}_norm.weight`, `<prefix>.blk.<i>.ffn_{gate,up,down}.weight`.
+Current rule:
+- it is acceptable to support both legacy and KugelAudio-specific metadata
+  during migration
+- the converter and loader must fail clearly for unsupported checkpoints
+- the metadata contract must be explicit, not inferred by accident
 
-The full mapping with regex is in `scripts/convert_vibevoice_to_gguf.py`.
+### Prompt semantics
 
-### Special token IDs (Qwen2.5 vision tokens repurposed for speech)
+For v1 TTS behavior, the canonical prompt shape comes from
+`../kugelaudio-open/src/kugelaudio_open/processors/kugelaudio_processor.py`.
+Keep these sections aligned exactly where practical:
+- system prompt
+- `Voice input:`
+- `Text input:`
+- `Speech output:`
 
-| ID     | Token                  | Role         |
-| ------ | ---------------------- | ------------ |
-| 151646 | `<|object_ref_start|>` | speech_start |
-| 151647 | `<|object_ref_end|>`   | speech_end   |
-| 151648 | `<|box_start|>`        | speech_pad   |
+Do not quietly preserve old VibeVoice prompt quirks if they diverge from the
+KugelAudio reference.
 
-The ASR prompt template puts a `speech_pad` for every 3200-sample window
-of input audio. Speech features are spliced into the input embeddings at
-those positions before the LM prefill.
+### Reference-audio preprocessing
 
-## Gotchas / past-bug archaeology
+Match canonical KugelAudio behavior:
+- accept whatever the current repo loader supports
+- resample internally to **24 kHz mono**
+- apply the same RMS / loudness normalization convention as the canonical
+  implementation
+- support **single reference input only** in v1
 
-These bit us before. They will probably bite again.
+## Gotchas / migration notes
 
-1. **Encoder ratios are reversed vs decoder ratios.** Upstream
-   `vibevoice/modular/modular_vibevoice_tokenizer.py:713`:
-   ```python
-   self.ratios = list(reversed(config.ratios))   # encoder
-   self.ratios = config.ratios                   # decoder
-   ```
-   Our `acoustic_tokenizer.cpp::load_encoder` reverses; `load_decoder`
-   does not. Mismatching this gives `[Noise]` transcripts because the
-   encoder ends up running K=4 convs with stride=8 → negative pad_total
-   → garbled latents. Magnitudes look ~right (std ~1.5 at the connector,
-   matching the reference) which makes it nasty to debug. The reference
-   PyTorch encoder produces the same magnitude; magnitude is *not* a
-   useful signal for this class of bug.
+1. **Current converter variant detection is VibeVoice-biased.**
+   `scripts/convert_kugelaudio_to_gguf.py` was built around VibeVoice family
+   assumptions. Re-check every architecture/config heuristic against
+   `../kugelaudio-open` before trusting it.
 
-2. **Speech features have ~100× the magnitude of text-token embeddings**
-   and that's *correct*. Qwen2.5 token embeddings have std≈0.011, our
-   acoustic+semantic connector sum has std≈1.5. The model was trained
-   that way. Don't normalize. (We did, it broke things.)
+2. **Prompt parity matters more than it looks.**
+   Small prompt-format drift can look like a "model quality" issue when it is
+   really a processor mismatch.
 
-3. **fp16 gguf load needs a separate ggml_context for promotions.** The
-   gguf-owned ctx is sized to the data exactly, no slack. If you write
-   anything to it (e.g., promote small fp16 → fp32 norm scales),
-   `ggml_new_object` aborts.
-   [`ModelLoader::promote_small_f16_to_f32`](src/model_loader.cpp)
-   allocates a sibling `promote_ctx_` for that.
+3. **Do not drop semantic conditioning.**
+   For this KugelAudio milestone, semantic conditioning is required if the
+   canonical path uses it for acceptable voice cloning.
 
-4. **ggml `mem_size` for compute pools must scale with sequence /
-   sample length.** Hardcoded values silently work on small inputs and
-   abort on big ones. The encoder uses ~64 KB / sample; the LM prefill
-   uses ~32 MB / token. Both are scaled in `vibevoice_asr.cpp`.
+4. **Behavior beats reuse when they conflict.**
+   Reuse as much of the existing C++ as possible, but if a reused path diverges
+   from `../kugelaudio-open`, fix the path.
 
-5. **TTS is non-deterministic without `--seed`.** The closed-loop test
-   pins `--seed=12345` for that reason.
+5. **Seed everything for comparisons.**
+   TTS evals are noisy without pinned seeds. Divergence testing should never be
+   run unseeded.
 
-6. **The conv1d wrapper inline-casts kernels to fp16** (see
-   `src/conv1d.cpp::sconv1d_causal`). That means quantized conv kernels
-   would silently produce wrong output, so `scripts/quantize_gguf.py`
-   only quantizes LM matmul weights. If you want to quantize convs,
-   teach the wrapper to dequantize first.
+6. **Keep CPU determinism in mind.**
+   The spec now requires deterministic CPU behavior for fixed seed/settings.
+   Treat nondeterminism as a bug unless clearly documented.
 
-7. **`pop3sen` `ggml_conv_1d_dw` reshapes to ne[2]=1 unconditionally,**
-   so depthwise conv only works for batch size 1. Our codepath only
-   ever runs B=1 so this is fine, but keep it in mind.
+7. **The old voice gguf path is legacy.**
+   `convert_voice_to_gguf.py` and related voice-gguf flow are not part of the
+   KugelAudio v1 target.
 
-8. **Acoustic encoder's `disable_last_norm: true`** in the official
-   config means there's no final RMSNorm between the last conv stage
-   and the head. Our loader sets `w.final_norm = nullptr` if the tensor
-   is absent; the forward pass skips it.
+8. **q8_0 is an execution target, not a parity target.**
+   For v1, `f16` carries the parity/quality burden. `q8_0` only needs to make
+   the defined eval path run end-to-end.
 
 ## Adding a new test
 
@@ -201,66 +279,53 @@ These bit us before. They will probably bite again.
 cp tests/test_smoke.cpp tests/test_my_thing.cpp
 # edit it, return 0 on pass, 77 to mean "skipped"
 echo 'vv_add_test(test_my_thing)' >> tests/CMakeLists.txt
-# if it depends on env vars, add it to the SKIP_RETURN_CODE block.
 ```
 
-For tests that need real model weights, follow the
-`tests/test_closed_loop.cpp` pattern: shell out to `vibevoice-cli` via
-`system()` so each model gets its own short-lived process. Loading
-multiple gguf models in one ggml context will fail because of the
-per-context memory pool sizing.
+For KugelAudio work, prefer tests that:
+- compare prompt/token behavior to `../kugelaudio-open`
+- exercise the exact supported checkpoint
+- shell out to the CLI or eval harness for end-to-end acceptance paths
+- keep fixtures and seeds fixed
+- make it obvious whether a test belongs to the KugelAudio v1 acceptance path
+  versus legacy/internal compatibility coverage
 
-## Adding a new converter
+## Converter workflow
 
-The converter pipeline is:
+Treat the converter as a first-class part of the product, not a throwaway.
+
+Typical flow:
 
 ```
-HF safetensors → scripts/convert_vibevoice_to_gguf.py → vibevoice-*.gguf
-                                                       ↓ (optional)
+HF checkpoint/config -> scripts/convert_kugelaudio_to_gguf.py -> .gguf
+                                                         ↓
                                                scripts/quantize_gguf.py
-                                                       ↓
-                                               vibevoice-*-q8_0.gguf
+                                                         ↓
+                                                f16 / q8_0 gguf
+                                                         ↓
+                                  scripts/eval_kugelaudio_divergence.py
+                                                         ↓
+                                         results.json + per-step logs
 ```
 
-Always run with `--strict` to catch unmapped source keys. New regex
-mappings go in `KEY_REWRITES` near the top of
-`convert_vibevoice_to_gguf.py`.
+Guidelines:
+- run strict mapping checks when possible
+- document every schema assumption
+- reject unsupported checkpoints clearly
+- keep the output metadata contract explicit
 
-## Releasing model weights
+## Useful third-party references
 
-1. Convert from upstream HF safetensors with
-   `scripts/convert_vibevoice_to_gguf.py`.
-2. Quantize with `scripts/quantize_gguf.py --type q8_0`.
-3. Run the closed-loop test against the quantized output to confirm
-   no quality regression.
-4. `hf upload-large-folder mudler/vibevoice.cpp-models <staging-dir>` —
-   atomic commit at end, resumable via `.cache/huggingface/`.
-
-## Useful third-party reference repos
-
-Clone these once and keep them around — most "this should have worked"
-debugging starts by diffing our impl against one of them.
-
-- [`microsoft/VibeVoice`](https://github.com/microsoft/VibeVoice) — the
-  trained-against PyTorch modeling code and its processor. **Single
-  source of truth on shapes, ordering, and prompt format.**
-- [`Blaizzy/mlx-audio`](https://github.com/Blaizzy/mlx-audio) — closest
-  non-PyTorch port. Useful when upstream does something tricky and you
-  want a confirmation in a different framework.
-- [`huggingface/transformers`](https://github.com/huggingface/transformers)
-  models `vibevoice_asr` / `vibevoice_acoustic_tokenizer` — refactored
-  re-port; differs from upstream in subtle places (sampling formula,
-  processor API). Cross-check before trusting.
-- The upstream HF model checkpoints
-  ([`microsoft/VibeVoice-Realtime-0.5B`](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B),
-  [`microsoft/VibeVoice-ASR`](https://huggingface.co/microsoft/VibeVoice-ASR))
-  — for tensor-by-tensor numerical comparisons.
+- `../kugelaudio-open` — canonical KugelAudio behavior
+- `microsoft/VibeVoice` — architecture ancestry / legacy comparison
+- `Blaizzy/mlx-audio` — extra non-PyTorch reference for inherited pieces
+- `huggingface/transformers` VibeVoice-related code — secondary reference only
 
 ## Style
 
-- C++17, no exceptions in the public API (return `vv_status` codes).
-- One translation unit per logical component; keep `vibevoice.cpp`
-  thin — it's the C-API shim and should mostly forward into the
-  `vv::` C++ namespace.
-- Don't add comments for the *what*, only for non-obvious *why* — the
-  list above is what the *why* category looks like.
+- C++17
+- no exceptions in the public API surface
+- one translation unit per logical component
+- keep shims thin
+- don't add comments for the *what*, only for non-obvious *why*
+- when changing behavior for KugelAudio parity, leave a short note pointing to
+  the canonical file in `../kugelaudio-open`
