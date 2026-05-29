@@ -193,6 +193,65 @@ Important knobs:
 Use chunking below when full text coverage matters more than maximum speaker
 identity consistency.
 
+### Long-form all-in-one runner
+
+For practical listening/eval runs, prefer the Python orchestration helper. It
+wraps the current best long-form CLI profile, writes a generation log and run
+metadata JSON, and can optionally run the ASR coverage checker afterward.
+
+```bash
+uv run scripts/run_kugelaudio_longform_best.py \
+  --model models/kugelaudio-f16.gguf \
+  --tokenizer models/tokenizer.gguf \
+  --ref-audio /path/to/real_reference.wav \
+  --text-file long_article.txt \
+  --out runs/longform-best/output.wav \
+  --language de
+```
+
+Defaults reflect the best current real-reference diagnostic profile:
+`cfg=2.0`, `steps=20`, `max_frames=320`, `overlap_sentences=0`, final-only
+ellipsis padding, and `tail-reference` continuity with a 1200 ms tail. Because
+`tail-reference` is still a retired/diagnostic continuity mode, the script sets
+`KUGELAUDIO_ENABLE_RETIRED_CONTINUITY=1` only for that explicit profile.
+
+Useful variants:
+
+```bash
+# Generate only; skip WhisperX/ASR QA.
+uv run scripts/run_kugelaudio_longform_best.py \
+  --ref-audio /path/to/real_reference.wav \
+  --text-file long_article.txt \
+  --out runs/longform-best/output.wav \
+  --no-asr
+
+# Conservative default chunking, without waveform-tail feedback.
+uv run scripts/run_kugelaudio_longform_best.py \
+  --ref-audio /path/to/real_reference.wav \
+  --text-file long_article.txt \
+  --out runs/longform-best/output-none.wav \
+  --chunk-continuity none \
+  --no-asr
+
+# Print the exact CLI/ASR commands without running them.
+uv run scripts/run_kugelaudio_longform_best.py \
+  --ref-audio /path/to/real_reference.wav \
+  --text-file long_article.txt \
+  --out runs/longform-best/output.wav \
+  --dry-run
+```
+
+Outputs next to `--out` by default:
+- `<out>.log` — full `kugelaudio-cli` stdout/stderr
+- `<out>.run.json` — resolved profile, commands, return codes, elapsed time
+- `<out>.asr.json` — optional ASR coverage report from
+  `scripts/verify_longform_asr.py`
+
+The ASR pass shells out through `uvx whisperx`; use `--no-asr` if WhisperX is
+not installed or if you only need a listening sample. ASR coverage is useful for
+omitted/cut-off text regressions, but it is not sufficient to detect every final
+phoneme cutoff.
+
 ### Large natural blocks for fuller long-form coverage
 
 The best current full-text compromise is to keep `--chunk-continuity none`, but
