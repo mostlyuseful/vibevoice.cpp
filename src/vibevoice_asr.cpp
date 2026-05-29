@@ -1,5 +1,5 @@
 #include "vibevoice_asr.hpp"
-#include "vibevoice_speech_helpers.hpp"
+#include "speech_conditioning_helpers.hpp"
 #include "backend.hpp"
 #include "common.hpp"
 #include "rms_norm.hpp"
@@ -91,7 +91,7 @@ bool run_encoder_single_shot(const EncoderWeights& w, const AcousticConfig& cfg,
 
     ggml_backend_buffer_t in_buf = vv::allocate_ctx_tensors(ctx);
     if (!in_buf) { ggml_free(ctx); return false; }
-    ggml_backend_tensor_set(x, audio.data(), 0, sizeof(float) * T);
+    vv::backend_tensor_set(x, audio.data(), 0, sizeof(float) * T);
 
     if (!vv::compute_graph(gf)) {
         ggml_backend_buffer_free(in_buf);
@@ -135,7 +135,7 @@ bool run_encoder_chunk_streaming(const EncoderWeights& w, const AcousticConfig& 
 
     ggml_backend_buffer_t in_buf = vv::allocate_ctx_tensors(ctx);
     if (!in_buf) { ggml_free(ctx); return false; }
-    ggml_backend_tensor_set(x, audio.data(), 0, sizeof(float) * T);
+    vv::backend_tensor_set(x, audio.data(), 0, sizeof(float) * T);
     // Populate per-conv cache prefixes — zeros on the first chunk, the
     // previous chunk's tail thereafter. .data was null until the alloc
     // above, so we couldn't memcpy them inside sconv1d_causal_streaming.
@@ -145,9 +145,9 @@ bool run_encoder_chunk_streaming(const EncoderWeights& w, const AcousticConfig& 
         const size_t need = static_cast<size_t>(e.T) * e.C;
         if (cache.is_first_chunk || e.data.size() != need) {
             std::vector<float> zeros(need, 0.0f);
-            ggml_backend_tensor_set(e.prefix, zeros.data(), 0, sizeof(float) * need);
+            vv::backend_tensor_set(e.prefix, zeros.data(), 0, sizeof(float) * need);
         } else {
-            ggml_backend_tensor_set(e.prefix, e.data.data(), 0, sizeof(float) * need);
+            vv::backend_tensor_set(e.prefix, e.data.data(), 0, sizeof(float) * need);
         }
     }
 
@@ -189,17 +189,19 @@ bool run_encoder_buf(const EncoderWeights& w, const AcousticConfig& cfg,
                      std::vector<float>* latents,
                      int* T_compressed) {
     // Chunk size depends on the active backend:
-    //   * CPU:  10 s (240 k samples) — bounded by per-chunk pool memory.
-    //   * CUDA:  2 s ( 48 k samples) — bounded by ggml-cuda's IM2COL kernel,
-    //            which encodes the stem conv's output time as gridDim.y
-    //            (capped at 65535). At 24 kHz, 2.73 s already maxes that
-    //            out, so 2 s gives a small safety margin.
+    //   * CPU:    10 s (240 k samples) — bounded by per-chunk pool memory.
+    //   * CUDA:    2 s ( 48 k samples) — bounded by ggml-cuda's IM2COL kernel.
+    //   * Vulkan:  1 s ( 24 k samples) — current RADV/iGPU path is much more
+    //              sensitive to transient graph allocations during encoder
+    //              setup, so prefer smaller chunks first.
     // The streaming cache (entry.prefix + entry.next_view) makes
     // chunk-vs-single-shot output bit-exact regardless of chunk size.
     constexpr int kSampleRate = 24000;
     const ggml_backend_t b = vv::backend();
-    const bool is_cuda = b && std::string(ggml_backend_name(b)).find("CUDA") != std::string::npos;
-    const int kSecondsPerSegment = is_cuda ? 2 : 10;
+    const std::string backend_nm = b && ggml_backend_name(b) ? ggml_backend_name(b) : "";
+    const bool is_cuda   = backend_nm.find("CUDA")   != std::string::npos;
+    const bool is_vulkan = backend_nm.find("Vulkan") != std::string::npos;
+    const int kSecondsPerSegment = is_vulkan ? 1 : (is_cuda ? 2 : 10);
     const int kSegmentSamples    = kSecondsPerSegment * kSampleRate;
 
     const int T = static_cast<int>(audio.size());
@@ -269,7 +271,7 @@ std::vector<float> run_connector(struct ggml_tensor* fc1_w,
 
     ggml_backend_buffer_t in_buf = vv::allocate_ctx_tensors(ctx);
     if (!in_buf) { ggml_free(ctx); return {}; }
-    ggml_backend_tensor_set(in, x.data(), 0, sizeof(float) * x.size());
+    vv::backend_tensor_set(in, x.data(), 0, sizeof(float) * x.size());
 
     std::vector<float> out;
     if (vv::compute_graph(gf)) {
@@ -298,7 +300,7 @@ std::vector<float> lm_head_logits_last(struct ggml_tensor* lm_head_w,
 
     ggml_backend_buffer_t in_buf = vv::allocate_ctx_tensors(ctx);
     if (!in_buf) { ggml_free(ctx); return {}; }
-    ggml_backend_tensor_set(x, hidden_last.data(), 0, sizeof(float) * hidden);
+    vv::backend_tensor_set(x, hidden_last.data(), 0, sizeof(float) * hidden);
 
     std::vector<float> out;
     if (vv::compute_graph(gf)) {
@@ -337,6 +339,21 @@ std::vector<float> lm_head_logits_last(struct ggml_tensor* lm_head_w,
                                        const std::vector<float>& hidden_last,
                                        int hidden, int vocab) {
     return ::vv::lm_head_logits_last(lm_head_w, hidden_last, hidden, vocab);
+}
+
+bool fuse_conditioning_features(const std::vector<float>& acoustic,
+                                const std::vector<float>& semantic,
+                                int hidden,
+                                int T,
+                                std::vector<float>* out) {
+    if (!out) return false;
+    const size_t want = static_cast<size_t>(hidden) * static_cast<size_t>(T);
+    if (acoustic.size() != want || semantic.size() != want) return false;
+    out->resize(want);
+    for (size_t i = 0; i < want; ++i) {
+        (*out)[i] = acoustic[i] + semantic[i];
+    }
+    return true;
 }
 
 }  // namespace detail
@@ -604,13 +621,13 @@ int vibevoice_asr_transcribe(VibeVoiceModel*           model,
             ggml_backend_buffer_t in_buf = vv::allocate_ctx_tensors(ctx);
             if (!in_buf) { ggml_free(ctx); return -10; }
 
-            ggml_backend_tensor_set(x,
+            vv::backend_tensor_set(x,
                 text_embeds.data() + static_cast<size_t>(hidden) * chunk_start,
                 0, sizeof(float) * hidden * chunk_K);
 
             std::vector<int32_t> pos_v(chunk_K);
             for (int i = 0; i < chunk_K; ++i) pos_v[i] = chunk_start + i;
-            ggml_backend_tensor_set(posv, pos_v.data(), 0,
+            vv::backend_tensor_set(posv, pos_v.data(), 0,
                                     sizeof(int32_t) * chunk_K);
 
             std::vector<ggml_fp16_t> mask_v(static_cast<size_t>(kv_new) * chunk_K);
@@ -623,7 +640,7 @@ int vibevoice_asr_transcribe(VibeVoiceModel*           model,
                         (k > q_abs) ? f16_ninf : f16_zero;
                 }
             }
-            ggml_backend_tensor_set(mask, mask_v.data(), 0,
+            vv::backend_tensor_set(mask, mask_v.data(), 0,
                                     sizeof(ggml_fp16_t) * mask_v.size());
 
             if (!vv::compute_graph(gf)) {
@@ -779,14 +796,14 @@ int vibevoice_asr_transcribe(VibeVoiceModel*           model,
 
         ggml_backend_buffer_t in_buf = vv::allocate_ctx_tensors(ctx);
         if (!in_buf) { ggml_free(ctx); return -11; }
-        ggml_backend_tensor_set(x, emb.data(), 0, sizeof(float) * hidden);
+        vv::backend_tensor_set(x, emb.data(), 0, sizeof(float) * hidden);
         const int32_t pos_v = pos;
-        ggml_backend_tensor_set(posv, &pos_v, 0, sizeof(int32_t));
+        vv::backend_tensor_set(posv, &pos_v, 0, sizeof(int32_t));
         std::vector<ggml_fp16_t> mask_v(kv_new);
         const ggml_fp16_t f16_zero = ggml_fp32_to_fp16(0.0f);
         const ggml_fp16_t f16_ninf = ggml_fp32_to_fp16(-INFINITY);
         for (int j = 0; j < kv_new; ++j) mask_v[j] = (j > pos) ? f16_ninf : f16_zero;
-        ggml_backend_tensor_set(mask, mask_v.data(), 0, sizeof(ggml_fp16_t) * kv_new);
+        vv::backend_tensor_set(mask, mask_v.data(), 0, sizeof(ggml_fp16_t) * kv_new);
 
         if (!vv::compute_graph(gf)) {
             ggml_backend_buffer_free(in_buf); ggml_free(ctx); return -11;

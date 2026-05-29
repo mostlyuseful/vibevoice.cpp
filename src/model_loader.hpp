@@ -33,6 +33,7 @@ public:
     // Tensor lookup. Returns nullptr if not found.
     struct ggml_tensor* tensor(const std::string& name) const;
     bool                has(const std::string& name) const;
+    bool                has_key(const std::string& key) const;
 
     // Cast all small (1-D / scalar / few-row) f16 tensors to f32 in-place.
     // ggml's CPU element-wise ops don't auto-cast f32 + f16, so norm scales,
@@ -67,6 +68,12 @@ private:
     ggml_backend_buffer_t     promote_buffer_ = nullptr;  // owns promoted weight data
     std::vector<std::string>  tensor_names_;
     std::unordered_map<std::string, struct ggml_tensor*> tensor_by_name_;
+
+    // mmap fields (CPU backend only). When non-null the gguf file is
+    // memory-mapped and tensor data pointers reference the mapped region
+    // directly, avoiding a full heap copy of the weight data.
+    void*  mmap_ptr_  = nullptr;
+    size_t mmap_size_ = 0;
 };
 
 }  // namespace vv

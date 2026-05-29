@@ -175,4 +175,86 @@ struct ggml_tensor* sconv_transpose1d_causal(struct ggml_context* ctx,
     return maybe_add_bias_t(ctx, y, bias);
 }
 
+struct ggml_tensor* sconv_transpose1d_causal_streaming(struct ggml_context* ctx,
+                                                       struct ggml_tensor*  x,
+                                                       struct ggml_tensor*  kernel,
+                                                       struct ggml_tensor*  bias,
+                                                       int stride,
+                                                       StreamingCache&       cache,
+                                                       const std::string&    layer_id) {
+    const int K        = static_cast<int>(kernel->ne[0]);
+    const int overlap  = K - stride;  // causal right tail carried to next chunk
+    const int C_out    = static_cast<int>(kernel->ne[1]);
+    const int B        = static_cast<int>(x->ne[2]);
+    const int T_in     = static_cast<int>(x->ne[0]);
+    const int64_t emit_len = static_cast<int64_t>(T_in) * stride;
+
+    auto& entry = cache[layer_id];
+    entry.T = std::max(0, overlap);
+    entry.C = C_out;
+
+    struct ggml_tensor* prefix = nullptr;
+    if (overlap > 0) {
+        prefix = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, overlap, C_out, B);
+        ggml_set_name(prefix, ("cache_prefix_" + layer_id).c_str());
+    }
+    entry.prefix = prefix;
+
+    struct ggml_tensor* k = (kernel->type == GGML_TYPE_F32)
+                              ? kernel
+                              : ggml_cast(ctx, kernel, GGML_TYPE_F32);
+    struct ggml_tensor* y_full = ggml_conv_transpose_1d(ctx, k, x, stride, /*p0=*/0, /*d0=*/1);
+
+    if (overlap <= 0) {
+        return maybe_add_bias_t(ctx, y_full, bias);
+    }
+
+    const int64_t y_full_len = y_full->ne[0];
+    if (y_full_len < overlap || emit_len <= 0) {
+        VV_LOG_ERROR("sconv_transpose1d_causal_streaming: invalid output sizing");
+        return nullptr;
+    }
+
+    // Save the raw overlap tail (without bias) for the next chunk.
+    if (!cache.is_final_chunk) {
+        const size_t tail_off = static_cast<size_t>(y_full_len - overlap) * y_full->nb[0];
+        struct ggml_tensor* tail = ggml_view_3d(ctx, y_full,
+                                                /*ne0=*/overlap, /*ne1=*/C_out, /*ne2=*/B,
+                                                /*nb1=*/y_full->nb[1], /*nb2=*/y_full->nb[2],
+                                                /*offset=*/tail_off);
+        entry.next_view = ggml_cont(ctx, tail);
+    }
+
+    struct ggml_tensor* emit_raw = nullptr;
+    if (emit_len <= overlap) {
+        struct ggml_tensor* y_front = ggml_view_3d(ctx, y_full,
+                                                   /*ne0=*/emit_len, /*ne1=*/C_out, /*ne2=*/B,
+                                                   /*nb1=*/y_full->nb[1], /*nb2=*/y_full->nb[2],
+                                                   /*offset=*/0);
+        y_front = ggml_cont(ctx, y_front);
+        struct ggml_tensor* p_front = ggml_view_3d(ctx, prefix,
+                                                   /*ne0=*/emit_len, /*ne1=*/C_out, /*ne2=*/B,
+                                                   /*nb1=*/prefix->nb[1], /*nb2=*/prefix->nb[2],
+                                                   /*offset=*/0);
+        p_front = ggml_cont(ctx, p_front);
+        emit_raw = ggml_add(ctx, y_front, p_front);
+    } else {
+        struct ggml_tensor* y_front = ggml_view_3d(ctx, y_full,
+                                                   /*ne0=*/overlap, /*ne1=*/C_out, /*ne2=*/B,
+                                                   /*nb1=*/y_full->nb[1], /*nb2=*/y_full->nb[2],
+                                                   /*offset=*/0);
+        y_front = ggml_cont(ctx, y_front);
+        struct ggml_tensor* front = ggml_add(ctx, y_front, prefix);
+        const int64_t mid_len = emit_len - overlap;
+        struct ggml_tensor* mid = ggml_view_3d(ctx, y_full,
+                                               /*ne0=*/mid_len, /*ne1=*/C_out, /*ne2=*/B,
+                                               /*nb1=*/y_full->nb[1], /*nb2=*/y_full->nb[2],
+                                               /*offset=*/static_cast<size_t>(overlap) * y_full->nb[0]);
+        mid = ggml_cont(ctx, mid);
+        emit_raw = ggml_concat(ctx, front, mid, /*dim=*/0);
+    }
+
+    return maybe_add_bias_t(ctx, emit_raw, bias);
+}
+
 }  // namespace vv

@@ -11,13 +11,19 @@
 //
 // Selection order at runtime:
 //   1. The backend named by VIBEVOICE_BACKEND env var (case-insensitive),
-//      one of: cuda, metal, vulkan, hipblas, cpu.
-//   2. The first GPU-class backend ggml_backend_dev_count reports.
-//   3. CPU.
+//      one of: cuda, metal, vulkan, hipblas, gpu, cpu.
+//   2. If VIBEVOICE_BACKEND_DEVICE_INDEX is set without an explicit backend,
+//      the Nth GPU device.
+//   3. The best available backend from ggml (GPU preferred over CPU).
+//   4. CPU fallback.
 //
-// Single global lazy-init: the first call to backend() picks one and
-// keeps it for the process lifetime. Pass VIBEVOICE_BACKEND=cpu to
-// force CPU even when GPU backends are available.
+// Optional env vars:
+//   VIBEVOICE_BACKEND_DEVICE_INDEX  Select a specific matching device.
+//   VIBEVOICE_BACKEND_VERBOSE       Include device descriptions/memory in logs.
+//
+// Single global lazy-init: the first call to backend() picks one and keeps it
+// for the process lifetime. Pass VIBEVOICE_BACKEND=cpu to force CPU even when
+// GPU backends are available.
 
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
@@ -54,6 +60,11 @@ bool compute_graph(ggml_cgraph* graph);
 // by the caller and must outlive any tensor reads/writes; freed with
 // ggml_backend_buffer_free.
 ggml_backend_buffer_t allocate_ctx_tensors(ggml_context* ctx);
+
+// Upload tensor data to the active backend. On Vulkan we force a backend
+// synchronize after each upload to avoid exhausting the driver's command
+// submission memory on this repo's many small staging writes.
+void backend_tensor_set(ggml_tensor* t, const void* data, size_t offset, size_t size);
 
 // Returns true if the active backend can execute ggml_flash_attn_ext
 // natively (i.e. without per-op CPU fallback that would force HtoD/DtoH

@@ -84,7 +84,7 @@ void vv_set_log_callback(vv_log_cb cb, void* user_data) {
 }
 
 const char* vv_version(void) {
-    return "vibevoice.cpp 0.0.1 (M1-foundations)";
+    return "kugelaudio.cpp 0.0.1";
 }
 
 }  // extern "C"

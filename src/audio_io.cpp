@@ -98,6 +98,23 @@ std::vector<float> resample_linear(const std::vector<float>& in,
     return out;
 }
 
+void normalize_dbfs(std::vector<float>* samples, float target_dB_FS, float eps) {
+    if (!samples || samples->empty()) return;
+    double sq = 0.0;
+    for (float v : *samples) sq += static_cast<double>(v) * v;
+    const float rms = static_cast<float>(std::sqrt(sq / std::max<size_t>(samples->size(), 1)));
+    const float target_lin = std::pow(10.0f, target_dB_FS / 20.0f);
+    const float scalar = target_lin / (rms + eps);
+    for (auto& v : *samples) v *= scalar;
+
+    float maxabs = 0.0f;
+    for (float v : *samples) maxabs = std::max(maxabs, std::fabs(v));
+    if (maxabs > 1.0f) {
+        const float clip_div = maxabs + eps;
+        for (auto& v : *samples) v /= clip_div;
+    }
+}
+
 int load_wav_24k_mono(const std::string& path, std::vector<float>* out) {
     if (!out) return VV_ERR_INVALID_ARG;
 

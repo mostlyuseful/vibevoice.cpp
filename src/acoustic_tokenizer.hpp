@@ -120,6 +120,12 @@ struct ggml_tensor* encoder_forward_streaming(struct ggml_context*    ctx,
                                               const AcousticConfig&   cfg,
                                               StreamingCache&         cache);
 
+struct ggml_tensor* decoder_forward_streaming(struct ggml_context*    ctx,
+                                              struct ggml_tensor*     z,
+                                              const DecoderWeights&   w,
+                                              const AcousticConfig&   cfg,
+                                              StreamingCache&         cache);
+
 }  // namespace vv
 
 #endif  // VIBEVOICE_ACOUSTIC_TOKENIZER_HPP

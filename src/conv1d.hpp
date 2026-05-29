@@ -110,6 +110,18 @@ struct ggml_tensor* sconv_transpose1d_causal(struct ggml_context* ctx,
                                              struct ggml_tensor*  bias,   // [C_out] or null
                                              int stride);
 
+// Streaming causal transposed-conv. Non-final chunks keep the right-side
+// overlap tail (`K - stride`) in `cache[layer_id].next_view` and emit only
+// the finalized prefix of length `T_in * stride`; final chunks emit the full
+// causal output and do not require a next tail.
+struct ggml_tensor* sconv_transpose1d_causal_streaming(struct ggml_context* ctx,
+                                                       struct ggml_tensor*  x,
+                                                       struct ggml_tensor*  kernel,
+                                                       struct ggml_tensor*  bias,
+                                                       int stride,
+                                                       StreamingCache&       cache,
+                                                       const std::string&    layer_id);
+
 }  // namespace vv
 
 #endif  // VIBEVOICE_CONV1D_HPP

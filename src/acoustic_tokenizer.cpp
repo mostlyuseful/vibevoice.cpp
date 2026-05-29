@@ -351,4 +351,45 @@ struct ggml_tensor* decoder_forward(struct ggml_context*  ctx,
     return y;
 }
 
+struct ggml_tensor* decoder_forward_streaming(struct ggml_context*    ctx,
+                                              struct ggml_tensor*     z,
+                                              const DecoderWeights&   w,
+                                              const AcousticConfig&   cfg,
+                                              StreamingCache&         cache) {
+    char buf[64];
+
+    struct ggml_tensor* h = sconv1d_causal_streaming(
+        ctx, z, w.stem.kernel, w.stem.bias, w.stem.stride, /*dilation=*/1, /*groups=*/1,
+        cache, "decoder_stem");
+    for (size_t j = 0; j < w.stages[0].size(); ++j) {
+        std::snprintf(buf, sizeof(buf), "decoder_stage_0_block_%zu", j);
+        h = block1d_forward_streaming(ctx, h, w.stages[0][j], cfg.eps, cache, buf);
+    }
+
+    for (size_t i = 1; i < cfg.depths.size(); ++i) {
+        std::snprintf(buf, sizeof(buf), "decoder_up_%zu", i);
+        h = sconv_transpose1d_causal_streaming(
+            ctx, h, w.ups[i - 1].kernel, w.ups[i - 1].bias, w.ups[i - 1].stride,
+            cache, buf);
+        for (size_t j = 0; j < w.stages[i].size(); ++j) {
+            std::snprintf(buf, sizeof(buf), "decoder_stage_%zu_block_%zu", i, j);
+            h = block1d_forward_streaming(ctx, h, w.stages[i][j], cfg.eps, cache, buf);
+        }
+    }
+
+    struct ggml_tensor* y = h;
+    if (w.final_norm) {
+        struct ggml_tensor* p = ggml_permute(ctx, y, 1, 0, 2, 3);
+        p = ggml_cont(ctx, p);
+        p = ggml_rms_norm(ctx, p, cfg.eps);
+        p = ggml_mul(ctx, p, w.final_norm);
+        p = ggml_permute(ctx, p, 1, 0, 2, 3);
+        y = ggml_cont(ctx, p);
+    }
+    y = sconv1d_causal_streaming(
+        ctx, y, w.head.kernel, w.head.bias, w.head.stride, /*dilation=*/1, /*groups=*/1,
+        cache, "decoder_head");
+    return y;
+}
+
 }  // namespace vv

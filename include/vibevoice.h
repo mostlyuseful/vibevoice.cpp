@@ -94,7 +94,7 @@ VV_API int           vv_tts(vv_context* ctx,
                             const vv_tts_params* p,
                             vv_audio* out);
 
-/* ---------- ASR ---------- */
+/* ---------- ASR (legacy/internal compatibility; not part of the published KugelAudio surface) ---------- */
 typedef struct {
     float temperature;     /* 0.0 = greedy */
     int   max_new_tokens;  /* 0 = unbounded */

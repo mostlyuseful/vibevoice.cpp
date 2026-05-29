@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(vibevoice
+project(kugelaudio
         VERSION   0.0.1
         LANGUAGES C CXX)
 
@@ -14,34 +14,50 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # ---------- options ----------
-option(VIBEVOICE_BUILD_TESTS    "Build vibevoice tests"    OFF)
-option(VIBEVOICE_BUILD_EXAMPLES "Build vibevoice examples" ON)
-option(VIBEVOICE_BUILD_SERVER   "Build vibevoice server"   OFF)
-option(VIBEVOICE_TEST_LARGE     "Run large/E2E tests"      OFF)
-option(VIBEVOICE_SHARED         "Build shared library"     OFF)
+option(KUGELAUDIO_BUILD_TESTS    "Build kugelaudio.cpp tests"    OFF)
+option(KUGELAUDIO_BUILD_EXAMPLES "Build kugelaudio.cpp examples" ON)
+option(KUGELAUDIO_BUILD_SERVER   "Build kugelaudio.cpp server"   OFF)
+option(KUGELAUDIO_TEST_LARGE     "Run large/E2E tests"           OFF)
+option(KUGELAUDIO_SHARED         "Build shared library"          OFF)
 
 # Backend toggles — forwarded to the embedded ggml submodule. Off by
-# default; enable with `-DVIBEVOICE_GGML_CUDA=ON`, etc.
-option(VIBEVOICE_GGML_CUDA      "Build ggml with CUDA backend"     OFF)
-option(VIBEVOICE_GGML_METAL     "Build ggml with Metal backend"    OFF)
-option(VIBEVOICE_GGML_VULKAN    "Build ggml with Vulkan backend"   OFF)
-option(VIBEVOICE_GGML_HIPBLAS   "Build ggml with hipBLAS backend"  OFF)
+# default; enable with `-DKUGELAUDIO_GGML_CUDA=ON`, etc.
+option(KUGELAUDIO_GGML_CUDA      "Build ggml with CUDA backend"     OFF)
+option(KUGELAUDIO_GGML_METAL     "Build ggml with Metal backend"    OFF)
+option(KUGELAUDIO_GGML_VULKAN    "Build ggml with Vulkan backend"   OFF)
+option(KUGELAUDIO_GGML_HIPBLAS   "Build ggml with hipBLAS backend"  OFF)
+
+# Deprecated option aliases retained for compatibility while the fork is renamed.
+option(VIBEVOICE_BUILD_TESTS    "Deprecated alias for KUGELAUDIO_BUILD_TESTS"    ${KUGELAUDIO_BUILD_TESTS})
+option(VIBEVOICE_BUILD_EXAMPLES "Deprecated alias for KUGELAUDIO_BUILD_EXAMPLES" ${KUGELAUDIO_BUILD_EXAMPLES})
+option(VIBEVOICE_BUILD_SERVER   "Deprecated alias for KUGELAUDIO_BUILD_SERVER"   ${KUGELAUDIO_BUILD_SERVER})
+option(VIBEVOICE_TEST_LARGE     "Deprecated alias for KUGELAUDIO_TEST_LARGE"     ${KUGELAUDIO_TEST_LARGE})
+option(VIBEVOICE_SHARED         "Deprecated alias for KUGELAUDIO_SHARED"         ${KUGELAUDIO_SHARED})
+option(VIBEVOICE_GGML_CUDA      "Deprecated alias for KUGELAUDIO_GGML_CUDA"      ${KUGELAUDIO_GGML_CUDA})
+option(VIBEVOICE_GGML_METAL     "Deprecated alias for KUGELAUDIO_GGML_METAL"     ${KUGELAUDIO_GGML_METAL})
+option(VIBEVOICE_GGML_VULKAN    "Deprecated alias for KUGELAUDIO_GGML_VULKAN"    ${KUGELAUDIO_GGML_VULKAN})
+option(VIBEVOICE_GGML_HIPBLAS   "Deprecated alias for KUGELAUDIO_GGML_HIPBLAS"   ${KUGELAUDIO_GGML_HIPBLAS})
+foreach(_opt BUILD_TESTS BUILD_EXAMPLES BUILD_SERVER TEST_LARGE SHARED GGML_CUDA GGML_METAL GGML_VULKAN GGML_HIPBLAS)
+    if(VIBEVOICE_${_opt} AND NOT KUGELAUDIO_${_opt})
+        set(KUGELAUDIO_${_opt} ON CACHE BOOL "Compatibility value from VIBEVOICE_${_opt}" FORCE)
+    endif()
+endforeach()
 
 # ---------- ggml ----------
 # We embed ggml as a submodule under third_party/ggml. We forward common
 # GGML_* options so users can drive backends from the top-level cache.
 set(GGML_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-if(VIBEVOICE_GGML_CUDA)
+if(KUGELAUDIO_GGML_CUDA)
     set(GGML_CUDA   ON CACHE BOOL "" FORCE)
 endif()
-if(VIBEVOICE_GGML_METAL)
+if(KUGELAUDIO_GGML_METAL)
     set(GGML_METAL  ON CACHE BOOL "" FORCE)
 endif()
-if(VIBEVOICE_GGML_VULKAN)
+if(KUGELAUDIO_GGML_VULKAN)
     set(GGML_VULKAN ON CACHE BOOL "" FORCE)
 endif()
-if(VIBEVOICE_GGML_HIPBLAS)
+if(KUGELAUDIO_GGML_HIPBLAS)
     set(GGML_HIPBLAS ON CACHE BOOL "" FORCE)
 endif()
 add_subdirectory(third_party/ggml EXCLUDE_FROM_ALL)
@@ -55,6 +71,7 @@ set(VIBEVOICE_SOURCES
     src/audio_io.cpp
     src/model_loader.cpp
     src/tokenizer.cpp
+    src/kugelaudio_chunking.cpp
     src/qwen2.cpp
     src/conv1d.cpp
     src/acoustic_tokenizer.cpp
@@ -69,13 +86,15 @@ set(VIBEVOICE_PUBLIC_HEADERS
     include/vibevoice_capi.h
 )
 
-if(VIBEVOICE_SHARED)
+if(KUGELAUDIO_SHARED)
     add_library(vibevoice SHARED ${VIBEVOICE_SOURCES})
     target_compile_definitions(vibevoice PUBLIC VIBEVOICE_SHARED)
     target_compile_definitions(vibevoice PRIVATE VIBEVOICE_BUILD)
 else()
     add_library(vibevoice STATIC ${VIBEVOICE_SOURCES})
 endif()
+
+set_target_properties(vibevoice PROPERTIES OUTPUT_NAME kugelaudio)
 
 target_include_directories(vibevoice
     PUBLIC
@@ -98,7 +117,7 @@ foreach(_be cuda metal vulkan hipblas blas)
         target_compile_definitions(vibevoice PUBLIC VIBEVOICE_HAVE_${_BE})
     endif()
 endforeach()
-if(VIBEVOICE_GGML_CUDA)
+if(KUGELAUDIO_GGML_CUDA)
     find_package(CUDAToolkit QUIET)
     if(CUDAToolkit_FOUND)
         target_link_libraries(vibevoice PUBLIC CUDA::cudart)
@@ -110,11 +129,11 @@ target_compile_options(vibevoice PRIVATE
 )
 
 # ---------- subdirs ----------
-if(VIBEVOICE_BUILD_EXAMPLES)
+if(KUGELAUDIO_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
-if(VIBEVOICE_BUILD_TESTS)
+if(KUGELAUDIO_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
@@ -123,7 +142,7 @@ endif()
 include(GNUInstallDirs)
 
 install(TARGETS vibevoice
-        EXPORT  vibevoiceTargets
+        EXPORT  kugelaudioTargets
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

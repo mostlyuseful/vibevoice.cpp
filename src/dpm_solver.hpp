@@ -12,6 +12,7 @@
 
 #include "diffusion_head.hpp"
 
+#include <functional>
 #include <vector>
 
 namespace vv {
@@ -21,6 +22,8 @@ struct DPMSolverConfig {
     int   num_inference_steps = 20;
     int   solver_order        = 2;
     bool  lower_order_final   = true;
+    bool  sde_dpmsolver_plus_plus = false;
+    bool  cast_sample_to_f16  = false;
 };
 
 struct DPMSolverState {
@@ -54,7 +57,30 @@ int dpm_solver_sample(std::vector<float>&         x,
                       const DPMSolverConfig&      solver_cfg,
                       const DPMSolverState&       state,
                       const std::vector<float>&   cond_neg = {},
-                      float                       cfg_scale = 1.0f);
+                      float                       cfg_scale = 1.0f,
+                      const std::vector<float>*   variance_noise = nullptr,
+                      const std::function<void(int, const std::vector<float>&)>* trace_model_output = nullptr,
+                      const std::function<void(int, const std::vector<float>&)>* trace_step = nullptr);
+
+// Continue the scheduler from an intermediate inference step. `x` must already
+// be a noisy sample at `state.timesteps[start_step]`. Used for opt-in
+// img2img-style latent refinement diagnostics.
+int dpm_solver_sample_from_step(std::vector<float>&         x,
+                                int                         start_step,
+                                int                         latent,
+                                int                         frames,
+                                int                         batch,
+                                const std::vector<float>&   cond,
+                                int                         hidden,
+                                const DiffusionHeadWeights& w,
+                                const DiffusionHeadConfig&  head_cfg,
+                                const DPMSolverConfig&      solver_cfg,
+                                const DPMSolverState&       state,
+                                const std::vector<float>&   cond_neg = {},
+                                float                       cfg_scale = 1.0f,
+                                const std::vector<float>*   variance_noise = nullptr,
+                                const std::function<void(int, const std::vector<float>&)>* trace_model_output = nullptr,
+                                const std::function<void(int, const std::vector<float>&)>* trace_step = nullptr);
 
 }  // namespace vv
 

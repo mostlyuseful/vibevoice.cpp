@@ -2,6 +2,13 @@
 #include "backend.hpp"
 #include "common.hpp"
 
+#include "ggml-cpu.h"
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -14,6 +21,7 @@ ModelLoader::~ModelLoader() {
     if (promote_buffer_) ggml_backend_buffer_free(promote_buffer_);
     if (promote_ctx_)    ggml_free(promote_ctx_);
     if (backend_buffer_) ggml_backend_buffer_free(backend_buffer_);
+    if (mmap_ptr_ && mmap_size_ > 0) munmap(mmap_ptr_, mmap_size_);
     if (gguf_)           gguf_free(gguf_);
     if (ctx_)            ggml_free(ctx_);
 }
@@ -57,7 +65,55 @@ bool ModelLoader::load(const std::string& path) {
     // (host pages on CPU; device VRAM on GPU). Reads/writes have to go
     // through ggml_backend_tensor_{set,get}. Tensor-less ggufs (e.g. the
     // tokenizer-only file) skip allocation entirely.
-    if (n > 0) {
+    //
+    // On CPU we mmap the gguf file and point tensor data directly into
+    // the mapped region, avoiding a full heap copy of the weights.
+    //
+    // GPU backends keep the explicit upload path below so the graph runs
+    // as a single backend. Vulkan in particular cannot use CPU-buffer
+    // model tensors with our current single-backend compute path.
+    bool use_mmap = ggml_backend_is_cpu(vv::backend());
+    if (n > 0 && use_mmap) {
+        int fd = ::open(path.c_str(), O_RDONLY);
+        if (fd < 0) {
+            VV_LOG_ERROR("ModelLoader: open %s failed", path.c_str());
+            return false;
+        }
+        struct stat st;
+        if (::fstat(fd, &st) != 0) {
+            ::close(fd);
+            VV_LOG_ERROR("ModelLoader: fstat %s failed", path.c_str());
+            return false;
+        }
+        mmap_size_ = static_cast<size_t>(st.st_size);
+        mmap_ptr_  = ::mmap(nullptr, mmap_size_, PROT_READ, MAP_SHARED, fd, 0);
+        ::close(fd);
+        if (mmap_ptr_ == MAP_FAILED) {
+            mmap_ptr_  = nullptr;
+            mmap_size_ = 0;
+            VV_LOG_ERROR("ModelLoader: mmap %s failed", path.c_str());
+            return false;
+        }
+
+        // Wrap the mmap'd region in a CPU backend buffer so
+        // ggml_backend_tensor_{get,set} work correctly.
+        backend_buffer_ = ggml_backend_cpu_buffer_from_ptr(mmap_ptr_, mmap_size_);
+        if (!backend_buffer_) {
+            VV_LOG_ERROR("ModelLoader: cpu_buffer_from_ptr failed for %s", path.c_str());
+            return false;
+        }
+
+        const size_t data_off = gguf_get_data_offset(gguf_);
+        for (int64_t i = 0; i < n; ++i) {
+            const char* name = gguf_get_tensor_name(gguf_, i);
+            if (!name) continue;
+            struct ggml_tensor* t = ggml_get_tensor(ctx_, name);
+            if (!t) continue;
+            const size_t off = data_off + gguf_get_tensor_offset(gguf_, i);
+            t->data  = (char*)mmap_ptr_ + off;
+            t->buffer = backend_buffer_;
+        }
+    } else if (n > 0) {
         backend_buffer_ = ggml_backend_alloc_ctx_tensors(ctx_, vv::backend());
         if (!backend_buffer_) {
             VV_LOG_ERROR("ModelLoader: backend_alloc_ctx_tensors failed");
@@ -70,36 +126,41 @@ bool ModelLoader::load(const std::string& path) {
         return true;
     }
 
-    // Stream the on-disk tensor bytes into the backend buffer. We open
-    // the file ourselves (gguf has the byte offsets but doesn't expose a
-    // streaming reader) and read each tensor in turn into a small CPU
-    // staging buffer, then upload via ggml_backend_tensor_set. The
-    // staging buffer is sized to the largest tensor we encounter.
-    FILE* fp = std::fopen(path.c_str(), "rb");
-    if (!fp) {
-        VV_LOG_ERROR("ModelLoader: fopen %s failed", path.c_str());
-        return false;
-    }
-    const size_t data_off = gguf_get_data_offset(gguf_);
-    std::vector<uint8_t> stage;
-    for (int64_t i = 0; i < n; ++i) {
-        const char* name = gguf_get_tensor_name(gguf_, i);
-        if (!name) continue;
-        struct ggml_tensor* t = ggml_get_tensor(ctx_, name);
-        if (!t) continue;
-        const size_t off = data_off + gguf_get_tensor_offset(gguf_, i);
-        const size_t sz  = gguf_get_tensor_size(gguf_, i);
-        if (sz == 0) continue;
-        if (stage.size() < sz) stage.resize(sz);
-        if (std::fseek(fp, static_cast<long>(off), SEEK_SET) != 0
-         || std::fread(stage.data(), 1, sz, fp) != sz) {
-            VV_LOG_ERROR("ModelLoader: read failed for tensor %s", name);
-            std::fclose(fp);
+    // For non-mmap backends: stream the on-disk tensor bytes into the
+    // backend buffer. We open the file ourselves (gguf has the byte offsets but
+    // doesn't expose a streaming reader) and read each tensor in turn
+    // into a small CPU staging buffer, then upload via
+    // ggml_backend_tensor_set.
+    //
+    // The mmap path above skips this entirely — tensor data already
+    // points into the mapped file.
+    if (!use_mmap) {
+        FILE* fp = std::fopen(path.c_str(), "rb");
+        if (!fp) {
+            VV_LOG_ERROR("ModelLoader: fopen %s failed", path.c_str());
             return false;
         }
-        ggml_backend_tensor_set(t, stage.data(), 0, sz);
+        const size_t data_off = gguf_get_data_offset(gguf_);
+        std::vector<uint8_t> stage;
+        for (int64_t i = 0; i < n; ++i) {
+            const char* name = gguf_get_tensor_name(gguf_, i);
+            if (!name) continue;
+            struct ggml_tensor* t = ggml_get_tensor(ctx_, name);
+            if (!t) continue;
+            const size_t off = data_off + gguf_get_tensor_offset(gguf_, i);
+            const size_t sz  = gguf_get_tensor_size(gguf_, i);
+            if (sz == 0) continue;
+            if (stage.size() < sz) stage.resize(sz);
+            if (std::fseek(fp, static_cast<long>(off), SEEK_SET) != 0
+             || std::fread(stage.data(), 1, sz, fp) != sz) {
+                VV_LOG_ERROR("ModelLoader: read failed for tensor %s", name);
+                std::fclose(fp);
+                return false;
+            }
+            vv::backend_tensor_set(t, stage.data(), 0, sz);
+        }
+        std::fclose(fp);
     }
-    std::fclose(fp);
 
     VV_LOG_INFO("loaded %s: %lld tensors, %lld kv (backend=%s)",
                 path.c_str(),
@@ -178,7 +239,7 @@ void ModelLoader::promote_small_f16_to_f32(size_t max_elems) {
         if (stage_out.size() < n) stage_out.resize(n);
         ggml_backend_tensor_get(src_t, stage_in.data(), 0, n * sizeof(ggml_fp16_t));
         for (size_t i = 0; i < n; ++i) stage_out[i] = ggml_fp16_to_fp32(stage_in[i]);
-        ggml_backend_tensor_set(e.nt, stage_out.data(), 0, n * sizeof(float));
+        vv::backend_tensor_set(e.nt, stage_out.data(), 0, n * sizeof(float));
         // Repoint the lookup map so callers see the f32 promoted tensor.
         tensor_by_name_[e.key] = e.nt;
     }
@@ -188,6 +249,10 @@ void ModelLoader::promote_small_f16_to_f32(size_t max_elems) {
 
 bool ModelLoader::has(const std::string& name) const {
     return tensor_by_name_.count(name) > 0;
+}
+
+bool ModelLoader::has_key(const std::string& key) const {
+    return gguf_ && gguf_find_key(gguf_, key.c_str()) >= 0;
 }
 
 namespace {

@@ -29,6 +29,7 @@
 #include "acoustic_tokenizer.hpp"
 #include "diffusion_head.hpp"
 #include "dpm_solver.hpp"
+#include "kugelaudio_chunking.hpp"
 #include "model_loader.hpp"
 #include "qwen2.hpp"
 #include "tokenizer.hpp"
@@ -55,14 +56,35 @@ struct VibeVoiceConfig {
     int     head_layers   = 4;
     float   ffn_ratio     = 3.0f;
     int     freq_size     = 256;
-    // Acoustic decoder
+    // Acoustic decoder / conditioning
     int     vae_dim       = 64;
     AcousticConfig acoustic;
+    float   acoustic_fix_std = 0.0f;
+    std::string acoustic_std_dist_type = "none";
     // Audio
     int     sample_rate   = 24000;
     // Speech latent normalization
     float   speech_scaling = 1.0f;
     float   speech_bias    = 0.0f;
+};
+
+enum class FinalDecoderBackend {
+    Auto,
+    Cpu,
+    StreamActive,
+    Active,
+};
+
+struct CpuDecoderShadow {
+    struct ggml_context*  ctx    = nullptr;
+    ggml_backend_buffer_t buffer = nullptr;
+    DecoderWeights        at_dec;
+
+    CpuDecoderShadow() = default;
+    CpuDecoderShadow(const CpuDecoderShadow&) = delete;
+    CpuDecoderShadow& operator=(const CpuDecoderShadow&) = delete;
+    ~CpuDecoderShadow();
+    void free();
 };
 
 struct VibeVoiceWeights {
@@ -102,7 +124,9 @@ struct VibeVoiceModel {
     VibeVoiceWeights w;
     Tokenizer        tokenizer;        // optional, set externally
 
-    // Set during vibevoice_load: "realtime-0.5b", "asr-7b", or "vibepod-1.5b".
+    // Set during vibevoice_load. Some legacy/internal compatibility variants
+    // still use historical names even though the published KugelAudio surface
+    // is now described by runtime_path logs rather than variant labels.
     std::string      variant;
 
     // ---- ASR-specific weights (only populated when variant == "asr-7b") ----
@@ -114,6 +138,9 @@ struct VibeVoiceModel {
     struct ggml_tensor* sc_norm   = nullptr;
     struct ggml_tensor* sc_fc2_w  = nullptr; struct ggml_tensor* sc_fc2_b = nullptr;
     struct ggml_tensor* lm_head   = nullptr;
+
+    // Optional CPU shadow for explicit hybrid Vulkan->CPU final decode.
+    CpuDecoderShadow cpu_decoder_shadow;
 };
 
 bool vibevoice_load(const std::string& gguf_path, VibeVoiceModel* out);
@@ -143,38 +170,121 @@ bool vibevoice_voice_load(const std::string&     path,
                           VibeVoiceVoice*        out);
 
 struct VibeVoiceTTSParams {
-    // realtime-0.5b conditioning: a pre-baked voice gguf wrapped in
+    // Legacy compatibility conditioning: a pre-baked voice gguf wrapped in
     // VibeVoiceVoice (load with vibevoice_voice_load). Ignored when the
-    // model is a 1.5b variant.
+    // model uses raw-reference conditioning.
     const VibeVoiceVoice* voice = nullptr;
 
-    // 1.5b conditioning: one reference WAV per speaker. Each WAV is
-    // encoded inline through at_enc + st_enc + connectors at synthesis
-    // time and spliced into the prompt's Voice-input block for that
-    // speaker. Ignored when the model is a realtime-0.5b variant.
+    // Raw-reference conditioning surface.
     //
-    // Single-speaker: pass a one-element vector. Multi-speaker: pass
-    // one entry per distinct Speaker {N}: in the dialog. The user's
-    // `text` should then itself contain `Speaker 0: ...`,
-    // `Speaker 1: ...` lines (auto-wrapped as Speaker 0 if it doesn't).
+    // The legacy raw-reference compatibility path supports one reference WAV
+    // per speaker and speaker-tagged dialog text. That behavior is retained
+    // for legacy non-KugelAudio paths only.
+    //
+    // KugelAudio v1 acceptance is narrower by design: pass exactly one raw
+    // reference WAV and plain untagged text. Wider request shapes (for
+    // example multi-speaker or alternative conditioning layouts) are deferred
+    // and should widen through `detail::KugelAudioRequestPolicy`, not by
+    // changing this v1 call surface ad hoc.
     std::vector<std::string> ref_audio_paths;
 
     int      max_speech_frames = 200;
+    int      min_speech_frames = 0;
     float    cfg_scale         = 1.3f;
     int      n_diffusion_steps = 20;
     uint32_t seed              = 0;
-    bool     verbose           = false;
+    bool     verbose             = false;
+    int      max_words_per_chunk = 0;
+    int      overlap_sentences   = 0;
+    ChunkingStrategy chunking_strategy = ChunkingStrategy::Heuristic;
+    ChunkPauseMode pause_mode    = ChunkPauseMode::Punctuation;
+    int      crossfade_ms        = 30;
+    bool     chunk_boundary_cleanup = false;
+    int      chunk_boundary_leading_silence_ms = 200;
+    int      chunk_boundary_trailing_silence_ms = 300;
+    int      chunk_boundary_fade_ms = 15;
+    int      chunk_eos_guard_frames = 0;
+    TextEndPaddingMode text_end_padding = TextEndPaddingMode::None;
+    ChunkContinuityMode chunk_continuity = ChunkContinuityMode::None;
+    int      continuity_tail_ms  = 1200;
+    std::string prompt_continuity_instruction;
+    FinalDecoderBackend final_decoder_backend = FinalDecoderBackend::Auto;
+
+    // -1 = runtime/env default, 0 = disabled, 1 = enabled. The CLI enables
+    // this for f16 KugelAudio artifacts because canonical feedback appears to
+    // round generated connector embeddings before feeding them back to the LM.
+    int      cast_step_embed_f16 = -1;
+
+    // Opt-in diagnostic: img2img-style second pass over generated speech
+    // latents. 0 disables. Strength maps to the tail fraction of the existing
+    // DPM schedule; steps can cap/override the number of reverse steps.
+    float    latent_refine_strength = 0.0f;
+    int      latent_refine_steps    = 0;
 };
 
 // Generate audio for `text`. Dispatches on `model->variant`:
-//   * realtime-0.5b -> uses `p.voice` (pre-baked voice gguf state).
-//   * 1.5b          -> uses `p.ref_audio_path` (raw reference WAV;
-//                     runtime voice cloning, no separate voice gguf).
+//   * legacy pre-baked-voice compatibility path -> uses `p.voice`
+//     (pre-baked voice gguf state; not KugelAudio v1 acceptance).
+//   * legacy/raw-reference compatibility path -> uses `p.ref_audio_paths`
+//     (raw reference WAV(s)). For KugelAudio v1, exactly one raw reference
+//     audio input is accepted; wider shapes remain deferred behind the
+//     request-policy seam.
 // Output samples are 24 kHz mono float32. Returns 0 on success.
 int vibevoice_tts_generate(VibeVoiceModel*           model,
                            const std::string&        text,
                            const VibeVoiceTTSParams& p,
                            std::vector<float>*       samples);
+
+namespace detail {
+// Policy seam for deferred KugelAudio features. V1 keeps the profile narrow,
+// but future work (multi-reference, speaker-tagged dialog, alternative
+// conditioning shapes) should widen behavior by introducing a new profile,
+// not by scattering ad hoc conditionals across CLI/runtime/CAPI callsites.
+struct KugelAudioRequestPolicy {
+    bool        allow_pre_baked_voice      = false;
+    std::size_t min_ref_audio_inputs       = 1;
+    std::size_t max_ref_audio_inputs       = 1;
+    bool        allow_speaker_tagged_dialog = false;
+    const char* supported_shape            = nullptr;
+};
+
+const KugelAudioRequestPolicy& kugelaudio_v1_request_policy();
+bool validate_kugelaudio_request(const std::string& text,
+                                 const VibeVoiceTTSParams& p,
+                                 const KugelAudioRequestPolicy& policy,
+                                 std::string* error);
+bool validate_kugelaudio_single_speaker_request(const std::string& text,
+                                                const VibeVoiceTTSParams& p,
+                                                std::string* error);
+std::string build_kugelaudio_prompt_single_speaker_for_test(int vae_tok_len,
+                                                            const std::string& text);
+std::vector<int32_t> build_kugelaudio_inserted_speech_tokens_for_test(int vae_tok_len);
+std::vector<int32_t> build_kugelaudio_negative_seed_tokens_for_test();
+void build_kugelaudio_prompt_input_ids_for_test(const Tokenizer& tokenizer,
+                                                int vae_tok_len,
+                                                const std::string& text,
+                                                std::vector<int32_t>* input_ids,
+                                                std::vector<int>* pad_positions);
+std::vector<int32_t> kugelaudio_valid_speech_token_ids_for_test();
+float kugelaudio_speech_end_penalty_for_test();
+void apply_kugelaudio_speech_end_penalty_for_test(std::vector<float>* logits);
+std::vector<float> run_speech_connector_for_test(const VibeVoiceConfig& cfg,
+                                                 const VibeVoiceWeights& w,
+                                                 const float* x,
+                                                 int batch);
+DPMSolverConfig kugelaudio_solver_config_for_test(int requested_steps);
+int select_kugelaudio_speech_token_from_logits_for_test(const std::vector<float>& logits);
+bool kugelaudio_token_requires_cfg_reset_for_test(int32_t token_id);
+bool kugelaudio_token_stops_generation_for_test(int32_t token_id);
+int kugelaudio_speech_start_id_for_test();
+int kugelaudio_pause_duration_ms_for_test(const std::string& left_text,
+                                          const std::string& right_text,
+                                          ChunkPauseMode pause_mode);
+int kugelaudio_speech_end_id_for_test();
+int kugelaudio_speech_diffusion_id_for_test();
+int kugelaudio_eos_id_for_test();
+int kugelaudio_image_pad_id_for_test();
+}
 
 }  // namespace vv
 
