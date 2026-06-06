@@ -1,5 +1,8 @@
 # kugelaudio.cpp
 
+Fork maintained by **Maurice Sonnemann**, based on
+[`vibevoice.cpp`](https://github.com/mudler/vibevoice.cpp) by Ettore Di Giacinto / LocalAI.
+
 **Brought to you by the [LocalAI](https://github.com/mudler/LocalAI) team** - the creators of LocalAI, the open-source AI engine that runs any model - LLMs, vision, voice, image, video - on any hardware. No GPU required.
 
 [![Models on HF](https://img.shields.io/badge/HuggingFace-Models-yellow)](https://huggingface.co/mudler/kugelaudio.cpp-models)
